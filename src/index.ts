@@ -6,6 +6,7 @@ import { Telegram, type TgCallbackQuery, type TgMessage, type TgUpdate } from ".
 import { formatLocal } from "./time";
 import { sendBriefing } from "./briefing";
 import { handleApi } from "./api";
+import * as profile from "./profile";
 
 const HELP = `Halo! Aku asisten pribadimu 🤖
 
@@ -19,6 +20,8 @@ Yang bisa kamu lakukan:
 Perintah:
 /tugas — daftar tugas aktif
 /briefing — briefing sekarang
+/profil — diwawancara supaya aku lebih kenal kamu
+/batal — batalkan wawancara profil
 /reset — lupakan riwayat obrolan
 /id — lihat chat ID
 
@@ -55,6 +58,8 @@ export default {
         commands: [
           { command: "tugas", description: "Daftar tugas aktif" },
           { command: "briefing", description: "Briefing sekarang" },
+          { command: "profil", description: "Wawancara profil supaya asisten lebih kenal kamu" },
+          { command: "batal", description: "Batalkan wawancara profil" },
           { command: "reset", description: "Lupakan riwayat obrolan" },
           { command: "id", description: "Lihat chat ID" },
         ],
@@ -144,11 +149,20 @@ async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
     }
     if (cmd === "/tugas") return tg.send(m.chat.id, await taskOverview(env));
     if (cmd === "/briefing") return sendBriefing(env, "morning");
+    if (cmd === "/batal") {
+      const active = await profile.interviewActive(env);
+      await profile.stopInterview(env);
+      return tg.send(m.chat.id, active ? "Wawancara profil dibatalkan." : "Tidak ada yang sedang berjalan.");
+    }
   }
 
   await tg.typing(m.chat.id);
-  const { content, historyText, source } = await buildUserContent(env, tg, m);
+  let { content, historyText, source } = await buildUserContent(env, tg, m);
   if (!content.length) return tg.send(m.chat.id, "Jenis pesan ini belum didukung. Coba kirim teks, foto, atau voice note.");
+  if (text.toLowerCase().startsWith("/profil")) {
+    await profile.startInterview(env);
+    content = [{ type: "text", text: profile.INTERVIEW_KICKOFF }];
+  }
 
   const history = await db.getHistory(env.DB);
   const { text: reply, proposed } = await runAgent(env, content, {

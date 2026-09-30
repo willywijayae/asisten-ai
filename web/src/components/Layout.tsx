@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Brain, CheckSquare, LayoutDashboard, MessageCircle, Settings, type LucideIcon } from "lucide-react";
+import { Brain, CheckSquare, LayoutDashboard, MessageCircle, Settings, UserRound, type LucideIcon } from "lucide-react";
 import { useRouter } from "./app-context";
 
 export interface NavItem {
@@ -19,6 +19,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { path: "/tugas", label: "Tugas", short: "Tugas", icon: CheckSquare },
       { path: "/catatan", label: "Second Brain", short: "Brain", icon: Brain },
       { path: "/chat", label: "Chat AI", short: "Chat", icon: MessageCircle },
+      { path: "/profil", label: "Profil & Memori", short: "Profil", icon: UserRound },
     ],
   },
   {

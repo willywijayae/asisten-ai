@@ -51,3 +51,13 @@ export function localDayRange(tz: string, dayOffset = 0, now = new Date()): [str
   const start = startLocal - offsetMinutes(tz) * 60_000;
   return [new Date(start).toISOString(), new Date(start + 86_400_000).toISOString()];
 }
+
+/** "hari ini", "besok", "kemarin", "3 hari lagi", "lewat 2 hari" (berdasarkan hari kalender lokal). */
+export function relativeDay(iso: string, tz: string, now = new Date()): string {
+  const day = (d: Date) => Math.floor(shifted(d, tz).getTime() / 86_400_000);
+  const diff = day(new Date(iso)) - day(now);
+  if (diff === 0) return "hari ini";
+  if (diff === 1) return "besok";
+  if (diff === -1) return "kemarin";
+  return diff > 0 ? `${diff} hari lagi` : `lewat ${-diff} hari`;
+}

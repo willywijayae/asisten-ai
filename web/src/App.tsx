@@ -9,6 +9,7 @@ import { Tasks } from "./pages/Tasks";
 import { Notes } from "./pages/Notes";
 import { Chat } from "./pages/Chat";
 import { System } from "./pages/System";
+import { Profile } from "./pages/Profile";
 
 export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -48,6 +49,7 @@ export function App() {
   else if (path.startsWith("/tugas")) page = <Tasks onChanged={refreshBadges} />;
   else if (path.startsWith("/catatan")) page = <Notes />;
   else if (path.startsWith("/chat")) page = <Chat onChanged={refreshBadges} />;
+  else if (path.startsWith("/profil")) page = <Profile />;
   else if (path.startsWith("/sistem")) page = <System onLogout={logout} />;
   else page = <Empty title="Halaman tidak ditemukan" />;
 

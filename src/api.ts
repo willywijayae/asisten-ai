@@ -5,6 +5,7 @@ import { isLoggedIn, logout, requestCode, sessionCookie, verifyCode } from "./au
 import { sendBriefing } from "./briefing";
 import { Telegram } from "./telegram";
 import * as google from "./google";
+import * as profile from "./profile";
 import { localDayRange, localToUtc } from "./time";
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -229,8 +230,18 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
     const { message } = await readJson(req);
     const text = String(message ?? "").trim();
     if (!text) throw new HttpError(400, "Pesan kosong");
+    if (text.toLowerCase().startsWith("/batal")) {
+      const active = await profile.interviewActive(env);
+      await profile.stopInterview(env);
+      return json({ reply: active ? "Wawancara profil dibatalkan." : "Tidak ada yang sedang berjalan.", proposed: [] });
+    }
+    let input = text;
+    if (text.toLowerCase().startsWith("/profil")) {
+      await profile.startInterview(env);
+      input = profile.INTERVIEW_KICKOFF;
+    }
     const history = await db.getHistory(env.DB);
-    const { text: reply, proposed } = await runAgent(env, [{ type: "text", text }], {
+    const { text: reply, proposed } = await runAgent(env, [{ type: "text", text: input }], {
       source: "web",
       useTools: true,
       history,
@@ -270,6 +281,32 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
     await sendBriefing(env, kind === "evening" ? "evening" : "morning");
     return json({ ok: true });
   }
+  // --- Profil & preferensi ---
+  if (path === "/profile" && method === "GET") {
+    const [p, preferences, interviewing] = await Promise.all([
+      profile.getProfile(env),
+      profile.listPreferences(env),
+      profile.interviewActive(env),
+    ]);
+    return json({ ...p, preferences, interviewing });
+  }
+  if (path === "/profile" && method === "PATCH") {
+    const b = await readJson(req);
+    await profile.saveProfile(env, String(b.profile ?? ""));
+    return json(await profile.getProfile(env));
+  }
+  if (path === "/preferences" && method === "POST") {
+    const b = await readJson(req);
+    if (!String(b.content ?? "").trim()) throw new HttpError(400, "Isi preferensi wajib diisi");
+    const id = await profile.addPreference(env, String(b.content));
+    return json({ id }, 201);
+  }
+  const prefMatch = /^\/preferences\/(\d+)$/.exec(path);
+  if (prefMatch && method === "DELETE") {
+    if (!(await profile.deletePreference(env, Number(prefMatch[1])))) throw new HttpError(404, "Preferensi tidak ditemukan");
+    return json({ ok: true });
+  }
+
   // --- Google (Gmail & Drive) ---
   if (path === "/google/status" && method === "GET") return json(await google.status(env));
   if (path === "/google/connect" && method === "GET") {

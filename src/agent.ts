@@ -1,6 +1,7 @@
 import type { Env } from "./env";
 import * as db from "./db";
 import * as google from "./google";
+import * as profile from "./profile";
 import { formatLocal, localDayRange, localToUtc, nowContext } from "./time";
 
 const SYSTEM_PROMPT = `Kamu adalah asisten pribadi (chief of staff) milik satu orang: pemilik bot Telegram ini.
@@ -20,6 +21,9 @@ Aturan kerja:
 - Kamu tidak punya akses internet umum. Kalau ditanya info terkini, jawab dari pengetahuanmu dan bilang bisa jadi sudah tidak update.
 - Jangan pernah mengaku sudah mengirim email/pesan ke orang lain; kamu hanya bisa membuat draf untuk pemilik.
 - Kalau ada yang ambigu dan penting (misal jam tidak jelas), tetap catat dengan tebakan terbaik lalu sebutkan asumsinya, daripada banyak bertanya.
+- Saat menjawab dari catatan atau tugas, sebut sumbernya singkat (mis. "menurut catatan #12"). Bedakan yang tercatat dengan dugaanmu sendiri (tandai dengan "kemungkinan" / "dugaanku").
+- Pesan pemilik bisa disertai blok <konteks_otomatis>: hasil pencarian otomatis di catatan & tugas. Pakai kalau relevan, abaikan kalau tidak. Untuk pencarian lain tetap pakai search_notes / list_tasks.
+- Kalau pemilik mengoreksi caramu bekerja atau menyatakan preferensi yang berlaku ke depan (gaya bahasa, sapaan, arti istilah, kebiasaan, hal yang tidak disukai), simpan dengan remember_preference lalu konfirmasi singkat. Jangan simpan hal sekali pakai; itu bukan preferensi. Kalau pemilik minta melupakan preferensi, pakai forget_preference.
 - WAJIB: setiap permintaan mencatat, menyimpan, mengubah, atau menyelesaikan sesuatu harus dilakukan dengan memanggil tool yang sesuai di giliran ini. Jangan pernah bilang "sudah dicatat/disimpan/diubah" sebelum menerima hasil tool yang sukses. Balasan lama di riwayat obrolan tidak berarti apa pun sudah tersimpan.`;
 
 const GOOGLE_PROMPT = `
@@ -102,6 +106,36 @@ const TOOLS = [
     required: ["query"],
   }),
 ];
+
+const MEMORY_TOOLS = [
+  fn("remember_preference", "Simpan preferensi/koreksi permanen pemilik tentang cara kamu bekerja. Tulis sebagai aturan singkat yang jelas.", {
+    type: "object",
+    properties: { content: { type: "string", description: 'mis. "Panggil pemilik dengan \'Mas Willy\'" atau "\'Tim\' berarti tim sales expert SVO".' } },
+    required: ["content"],
+  }),
+  fn("forget_preference", "Hapus satu preferensi berdasarkan id-nya (lihat daftar PREFERENSI PEMILIK).", {
+    type: "object",
+    properties: { id: { type: "integer" } },
+    required: ["id"],
+  }),
+];
+
+const SAVE_PROFILE_TOOL = fn("save_profile", "Simpan profil pemilik hasil wawancara (menggantikan profil lama). Setelah ini wawancara selesai.", {
+  type: "object",
+  properties: { profile: { type: "string", description: "Profil lengkap dalam teks ringkas berpoin, dengan bagian-bagian yang diminta." } },
+  required: ["profile"],
+});
+
+const INTERVIEW_PROMPT = (existing: string) => `
+
+MODE WAWANCARA PROFIL SEDANG AKTIF.
+Tugasmu sekarang: mewawancarai pemilik secara santai supaya kamu mengenalnya, lalu menyimpan profilnya dengan save_profile.
+- Ajukan total 5-7 pertanyaan, SATU pertanyaan per pesan (boleh dengan contoh jawaban singkat). Jangan kirim formulir.
+- Gali: siapa dia (peran, bisnis/perusahaan, tanggung jawab), apa yang sedang dikejar (target, prioritas, definisi sukses), gaya kerja (tools harian, cara komunikasi, jam kerja, hal yang bikin frustrasi), tim & orang penting, hal yang ingin diperbaiki dari dirinya, dan minat/nilai di luar kerja.
+- Tanggapi jawaban dengan singkat dan natural sebelum pertanyaan berikutnya. Kalau jawaban sudah mencakup beberapa topik, lewati pertanyaan yang tidak perlu.
+- Kalau sudah cukup, tulis profil ringkas berpoin dengan bagian: Tentang saya · Bisnis & peran · Target & prioritas · Gaya kerja & komunikasi · Tim & orang penting · Yang ingin diperbaiki · Di luar kerja. Hanya tulis yang benar-benar disampaikan pemilik; jangan mengarang.
+- Panggil save_profile, lalu tunjukkan ringkasannya dan bilang profil bisa diedit di website admin → Profil.
+- Kalau pemilik ingin berhenti, tetap simpan yang sudah terkumpul.${existing ? `\n\nProfil yang sudah ada (perbarui, jangan hilangkan info yang masih benar):\n${existing}` : ""}`;
 
 const GOOGLE_TOOLS = [
   fn("gmail_search", "Cari email di Gmail pemilik. Mengembalikan daftar email (id, pengirim, subjek, tanggal, cuplikan).", {
@@ -284,6 +318,21 @@ async function executeTool(env: Env, ctx: RunContext, name: string, input: any):
       const f = await google.driveSaveDoc(env, String(input.title), String(input.content));
       return `Tersimpan di Google Drive folder "Second Brain": ${f.link}`;
     }
+    case "remember_preference": {
+      if (!input.content) throw new Error("content wajib diisi");
+      const id = await profile.addPreference(env, String(input.content));
+      return `Preferensi (${id}) tersimpan.`;
+    }
+    case "forget_preference": {
+      const ok = await profile.deletePreference(env, Number(input.id));
+      return ok ? `Preferensi (${input.id}) dihapus.` : `Preferensi (${input.id}) tidak ditemukan.`;
+    }
+    case "save_profile": {
+      if (!String(input.profile ?? "").trim()) throw new Error("profile wajib diisi");
+      await profile.saveProfile(env, String(input.profile));
+      await profile.stopInterview(env);
+      return "Profil tersimpan. Wawancara selesai.";
+    }
     default:
       throw new Error(`Tool tidak dikenal: ${name}`);
   }
@@ -366,7 +415,8 @@ const FAST_PROMPT = `
 Kamu adalah model CEPAT. Tangani sendiri pekerjaan rutin: mencatat/mengubah/menyelesaikan tugas, menyimpan & mencari catatan, menjawab pertanyaan singkat, merangkum hal pendek, mengusulkan tugas dari pesan yang diteruskan.
 Panggil tool escalate (sebagai tool PERTAMA, sebelum tool lain) kalau permintaan butuh pemikiran berat, misalnya: analisis atau strategi (bisnis, marketing, keuangan), riset/perbandingan dari banyak sumber, rencana bertahap, menulis dokumen/proposal/email penting yang panjang, merangkum dokumen/email panjang, atau pemilik meminta "pakai opus"/"pikir mendalam". Kalau ragu untuk hal rutin, kerjakan sendiri.`;
 
-const CLAIMS_SAVED = /(ter|di|ku|sudah )(simpan|catat)|sudah (aku |ku)?(ubah|update|tandai|selesaikan|tambah)|draf(t)? (sudah|tersimpan)|✅/i;
+const CLAIMS_SAVED =
+  /(sudah|udah|telah|berhasil)\s+(ku|aku\s+|di|ter)?(simpan|catat|tambah|ubah|update|tandai|hapus|selesaikan)|\bku(simpan|catat|tambahkan|ubah)\b|✅/i;
 
 /** Pemilik bisa memaksa model ahli dengan menyebutnya di pesan. */
 const wantsSmart = (parts: UserPart[]) =>
@@ -397,8 +447,24 @@ export async function runAgent(
     ),
   ];
 
-  const googleOn = opts.useTools && (await google.isConnected(env));
-  const basePrompt = SYSTEM_PROMPT + (googleOn ? GOOGLE_PROMPT : "");
+  const [googleOn, interviewing, owner, existingProfile] = await Promise.all([
+    opts.useTools ? google.isConnected(env) : false,
+    opts.useTools ? profile.interviewActive(env) : false,
+    profile.ownerContext(env),
+    profile.getProfile(env),
+  ]);
+  const basePrompt =
+    SYSTEM_PROMPT +
+    (googleOn ? GOOGLE_PROMPT : "") +
+    owner +
+    (interviewing ? INTERVIEW_PROMPT(existingProfile.profile) : "");
+
+  // Konteks otomatis dari second brain (bukan saat wawancara, supaya fokus).
+  if (opts.useTools && !interviewing) {
+    const query = parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join(" ");
+    const context = query ? await profile.autoContext(env, query) : "";
+    if (context) userContent.push({ type: "text", text: context });
+  }
   let tier: "fast" | "smart" = opts.tier === "smart" || wantsSmart(parts) ? "smart" : "fast";
   let usePuter = !!env.PUTER_AUTH_TOKEN;
 
@@ -407,13 +473,25 @@ export async function runAgent(
     ...normalizeHistory(opts.history),
     { role: "user", content: userContent },
   ];
-  const baseTools = opts.useTools ? [...TOOLS, ...(googleOn ? GOOGLE_TOOLS : [])] : undefined;
+  const baseTools = opts.useTools
+    ? [...TOOLS, ...MEMORY_TOOLS, ...(googleOn ? GOOGLE_TOOLS : []), ...(interviewing ? [SAVE_PROFILE_TOOL] : [])]
+    : undefined;
   // Model cepat boleh escalate (juga saat briefing tanpa tool, supaya tidak perlu).
   const toolsFor = () => (baseTools && tier === "fast" && usePuter ? [...baseTools, ESCALATE_TOOL] : baseTools);
 
   let modelUsed = "";
   // Tool yang benar-benar menulis data; dipakai untuk menangkap klaim palsu "sudah disimpan".
-  const WRITE_TOOLS = new Set(["add_task", "propose_tasks", "update_task", "save_note", "drive_save", "gmail_draft"]);
+  const WRITE_TOOLS = new Set([
+    "add_task",
+    "propose_tasks",
+    "update_task",
+    "save_note",
+    "drive_save",
+    "gmail_draft",
+    "remember_preference",
+    "forget_preference",
+    "save_profile",
+  ]);
   let wrote = false;
   let nudged = false;
 

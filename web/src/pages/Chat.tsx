@@ -13,6 +13,7 @@ const SUGGESTIONS = [
   "Ringkas catatan yang berhubungan dengan marketing",
   "Ingetin aku follow up klien besok jam 10",
   "Email apa aja yang belum kubalas hari ini?",
+  "/profil",
 ];
 
 export function Chat({ onChanged }: { onChanged: () => void }) {
@@ -31,8 +32,14 @@ export function Chat({ onChanged }: { onChanged: () => void }) {
   };
 
   useEffect(() => {
+    // ?kirim=… → langsung kirim pesan itu (dipakai tombol "Mulai wawancara").
+    const auto = new URLSearchParams(window.location.search).get("kirim");
+    if (auto) window.history.replaceState(null, "", "/chat");
     loadPage()
-      .then((m) => setItems(m))
+      .then((m) => {
+        setItems(m);
+        if (auto) send(auto);
+      })
       .catch((e) => {
         toast.error(e);
         setItems([]);
@@ -51,7 +58,7 @@ export function Chat({ onChanged }: { onChanged: () => void }) {
     setItems((cur) => [...older, ...(cur ?? [])]);
   };
 
-  const send = async (text = input) => {
+  async function send(text = input) {
     const message = text.trim();
     if (!message || sending) return;
     setInput("");
@@ -72,7 +79,7 @@ export function Chat({ onChanged }: { onChanged: () => void }) {
     } finally {
       setSending(false);
     }
-  };
+  }
 
   return (
     <div className="flex h-[calc(100vh-8.5rem)] flex-col md:h-[calc(100vh-4.5rem)]">

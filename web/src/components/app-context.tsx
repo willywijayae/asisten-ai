@@ -13,9 +13,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const navigate = useCallback((to: string) => {
-    if (to === window.location.pathname) return;
+    if (to === window.location.pathname + window.location.search) return;
     window.history.pushState(null, "", to);
-    setPath(to);
+    setPath(new URL(to, window.location.origin).pathname);
     window.scrollTo(0, 0);
   }, []);
   return <RouterCtx.Provider value={{ path, navigate }}>{children}</RouterCtx.Provider>;

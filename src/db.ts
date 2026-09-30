@@ -1,4 +1,4 @@
-import { formatLocal } from "./time";
+import { formatLocal, relativeDay } from "./time";
 
 export interface Task {
   id: number;
@@ -126,7 +126,7 @@ export function formatTask(t: Task, tz: string): string {
     .join(" ");
   const parts = [`#${t.id} ${t.title}`];
   if (flags) parts.push(`[${flags}]`);
-  if (t.due_at) parts.push(`— due ${formatLocal(t.due_at, tz)}`);
+  if (t.due_at) parts.push(`— due ${formatLocal(t.due_at, tz)} (${relativeDay(t.due_at, tz)})`);
   if (t.remind_at) parts.push(`(ingatkan ${formatLocal(t.remind_at, tz)})`);
   if (t.person) parts.push(`👤 ${t.person}`);
   if (t.notes) parts.push(`📝 ${t.notes}`);

@@ -10,6 +10,8 @@ Asisten AI pribadi ala "AI Chief of Staff" yang hidup di Telegram dan jalan di C
 - **Second brain** — "catat bahwa…" disimpan, bisa ditanya balik kapan saja.
 - **Pengingat otomatis** — 60 menit sebelum deadline (atau jam yang kamu minta), dengan tombol Selesai / Tunda 1 jam.
 - **Briefing pagi 07:00 & rekap malam 21:00 WIB** dikirim otomatis.
+- **Kenal kamu** — `/profil` memulai wawancara 5–7 pertanyaan; koreksi seperti "jangan panggil aku bro" disimpan sebagai preferensi permanen.
+- **Konteks otomatis** — setiap pesan otomatis dilengkapi catatan & tugas yang relevan (pencarian kata kunci, tanpa biaya AI), dan jawaban menyebut sumbernya.
 - **Privat** — bot hanya melayani `OWNER_CHAT_ID`; semua data ada di database D1 milikmu sendiri.
 
 ## Website admin
@@ -20,6 +22,7 @@ Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Teleg
 - **Tugas** — filter per status/waktu, cari, ubah, tandai selesai, setujui/buang usulan.
 - **Second Brain** — semua catatan, cari & filter per tag.
 - **Chat AI** — otak & riwayat yang sama dengan bot Telegram.
+- **Profil & Memori** — profil kamu (hasil wawancara `/profil` atau ditulis sendiri) dan daftar preferensi permanen; keduanya ikut dibaca di setiap percakapan.
 - **Sistem** — status bot/webhook/model, kirim briefing manual, reset riwayat.
 
 Modul baru (mis. Marketing & Riset) ditambahkan di `web/src/components/Layout.tsx` (menu) dan `web/src/App.tsx` (halaman), dengan endpoint di `src/api.ts`.
