@@ -1,8 +1,7 @@
-import type { BetaContentBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { Buffer } from "node:buffer";
 import type { Env } from "./env";
 import * as db from "./db";
-import { runAgent } from "./agent";
+import { runAgent, type UserPart } from "./agent";
 import { Telegram, type TgCallbackQuery, type TgMessage, type TgUpdate } from "./telegram";
 import { formatLocal, localDayRange } from "./time";
 
@@ -13,7 +12,7 @@ Yang bisa kamu lakukan:
 - Teruskan (forward) pesan / screenshot chat WhatsApp → aku usulkan tugasnya, kamu tinggal approve
 - Kirim voice note → aku transkrip & catat poin pentingnya
 - "catat bahwa password wifi kantor ada di laci" → tersimpan di second brain
-- Tanya: "apa aja tugasku minggu ini?", "riset harga sewa kantor di BSD"
+- Tanya: "apa aja tugasku minggu ini?", "aku pernah catat apa soal Budi?"
 
 Perintah:
 /tugas — daftar tugas aktif
@@ -132,7 +131,6 @@ async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   const history = await db.getHistory(env.DB);
   const { text: reply, proposed } = await runAgent(env, content, {
     source,
-    effort: "low",
     useTools: true,
     history,
   });
@@ -157,8 +155,8 @@ async function buildUserContent(
   env: Env,
   tg: Telegram,
   m: TgMessage,
-): Promise<{ content: BetaContentBlockParam[]; historyText: string; source: string }> {
-  const content: BetaContentBlockParam[] = [];
+): Promise<{ content: UserPart[]; historyText: string; source: string }> {
+  const content: UserPart[] = [];
   let source = "chat";
   const prefix: string[] = [];
 
@@ -181,10 +179,7 @@ async function buildUserContent(
     source = source === "forward" ? "forward" : "photo";
     const biggest = m.photo[m.photo.length - 1];
     const buf = await tg.downloadFile(biggest.file_id);
-    content.push({
-      type: "image",
-      source: { type: "base64", media_type: "image/jpeg", data: Buffer.from(buf).toString("base64") },
-    });
+    content.push({ type: "image", base64: Buffer.from(buf).toString("base64") });
     prefix.push("[Foto/screenshot terlampir]");
   }
 
@@ -290,7 +285,6 @@ async function sendBriefing(env: Env, kind: "morning" | "evening"): Promise<void
 
   const { text } = await runAgent(env, [{ type: "text", text: `${instruction}\n\n${data}` }], {
     source: "briefing",
-    effort: "medium",
     useTools: false,
     history: [],
   });

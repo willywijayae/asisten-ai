@@ -1,29 +1,22 @@
-import Anthropic from "@anthropic-ai/sdk";
-import type {
-  BetaContentBlock,
-  BetaContentBlockParam,
-  BetaMessageParam,
-  BetaToolResultBlockParam,
-  BetaToolUnion,
-} from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import type { Env } from "./env";
 import * as db from "./db";
 import { localDayRange, localToUtc, nowContext } from "./time";
 
 const SYSTEM_PROMPT = `Kamu adalah asisten pribadi (chief of staff) milik satu orang: pemilik bot Telegram ini.
-Tugasmu: mencatat & mengawal komitmen, mengingatkan jadwal, merangkum informasi, riset singkat, dan menyimpan catatan (second brain).
+Tugasmu: mencatat & mengawal komitmen, mengingatkan jadwal, merangkum informasi, dan menyimpan catatan (second brain).
 
 Gaya bicara:
 - Bahasa Indonesia santai tapi sopan, singkat, langsung ke inti. Ikuti gaya bahasa pemilik.
-- Balasan tampil sebagai teks polos di Telegram: jangan pakai tabel atau heading markdown. Boleh pakai daftar dengan "-" dan emoji secukupnya.
+- Balasan tampil sebagai teks polos di Telegram: jangan pakai tabel, heading, atau **bold** markdown. Boleh pakai daftar dengan "-" dan emoji secukupnya.
 
 Aturan kerja:
 - Semua waktu dalam zona waktu pemilik. Tulis waktu untuk tool dalam format lokal "YYYY-MM-DD HH:mm". Tanggal relatif ("besok", "Jumat depan") hitung dari waktu sekarang yang diberikan di setiap pesan.
-- Kalau pemilik secara langsung minta dicatat/diingatkan ("ingetin gue...", "catat tugas..."), pakai add_task.
+- Kalau pemilik secara langsung minta dicatat/diingatkan ("ingetin aku...", "catat tugas..."), pakai add_task.
 - Kalau isinya pesan yang DITERUSKAN, voice note, atau foto/screenshot chat, JANGAN langsung add_task. Ekstrak komitmen, janji, deadline, atau permintaan yang relevan untuk pemilik, lalu pakai propose_tasks supaya pemilik bisa approve dulu. Setelah itu rangkum isi pesannya singkat.
 - Kalau pemilik minta "catat bahwa...", "simpan info...", atau memberi fakta yang perlu diingat (nomor, alamat, preferensi, hasil meeting), pakai save_note.
 - Sebelum menjawab pertanyaan tentang hal yang pernah dicatat, cari dulu dengan search_notes / list_tasks. Jangan mengarang data pribadi.
-- Untuk riset atau informasi terbaru dari internet, pakai web_search lalu rangkum dengan sumbernya.
+- Untuk menandai selesai/membatalkan/mengubah tugas, cari id-nya dulu dengan list_tasks kalau belum tahu, lalu pakai update_task.
+- Kamu tidak punya akses internet. Kalau ditanya info terkini, jawab dari pengetahuanmu dan bilang bisa jadi sudah tidak update.
 - Jangan pernah mengaku sudah mengirim email/pesan ke orang lain; kamu hanya bisa membuat draf untuk pemilik.
 - Kalau ada yang ambigu dan penting (misal jam tidak jelas), tetap catat dengan tebakan terbaik lalu sebutkan asumsinya, daripada banyak bertanya.`;
 
@@ -36,43 +29,43 @@ const TASK_PROPS = {
   notes: { type: "string", description: "Detail tambahan / konteks." },
 } as const;
 
-const TOOLS: BetaToolUnion[] = [
-  {
-    name: "add_task",
-    description: "Tambah tugas/pengingat yang diminta langsung oleh pemilik. Langsung aktif.",
-    input_schema: { type: "object", properties: TASK_PROPS, required: ["title"] },
-  },
-  {
-    name: "propose_tasks",
-    description:
-      "Usulkan tugas yang diekstrak dari pesan diteruskan, voice note, atau screenshot. Tugas disimpan sebagai 'pending' dan pemilik akan menerima tombol Setujui/Buang untuk tiap tugas.",
-    input_schema: {
+const fn = (name: string, description: string, parameters: object) => ({
+  type: "function" as const,
+  function: { name, description, parameters },
+});
+
+const TOOLS = [
+  fn("add_task", "Tambah tugas/pengingat yang diminta langsung oleh pemilik. Langsung aktif.", {
+    type: "object",
+    properties: TASK_PROPS,
+    required: ["title"],
+  }),
+  fn(
+    "propose_tasks",
+    "Usulkan tugas yang diekstrak dari pesan diteruskan, voice note, atau screenshot. Tugas disimpan sebagai 'pending' dan pemilik menerima tombol Simpan/Buang untuk tiap tugas.",
+    {
       type: "object",
       properties: {
         tasks: { type: "array", items: { type: "object", properties: TASK_PROPS, required: ["title"] } },
       },
       required: ["tasks"],
     },
-  },
-  {
-    name: "list_tasks",
-    description: "Lihat daftar tugas.",
-    input_schema: {
-      type: "object",
-      properties: {
-        status: { type: "string", enum: ["open", "pending", "done", "all"], description: "Default open." },
-        range: {
-          type: "string",
-          enum: ["today", "tomorrow", "week", "overdue", "any"],
-          description: "Filter berdasarkan due. Default any.",
-        },
+  ),
+  fn("list_tasks", "Lihat daftar tugas beserta id-nya.", {
+    type: "object",
+    properties: {
+      status: { type: "string", enum: ["open", "pending", "done", "all"], description: "Default open." },
+      range: {
+        type: "string",
+        enum: ["today", "tomorrow", "week", "overdue", "any"],
+        description: "Filter berdasarkan due. Default any.",
       },
     },
-  },
-  {
-    name: "update_task",
-    description: "Ubah tugas (judul, jadwal, prioritas, status, dsb). Status 'done' untuk menandai selesai, 'cancelled' untuk batal.",
-    input_schema: {
+  }),
+  fn(
+    "update_task",
+    "Ubah tugas (judul, jadwal, prioritas, status, dsb). Status 'done' untuk menandai selesai, 'cancelled' untuk batal.",
+    {
       type: "object",
       properties: {
         id: { type: "integer" },
@@ -81,26 +74,39 @@ const TOOLS: BetaToolUnion[] = [
       },
       required: ["id"],
     },
-  },
-  {
-    name: "save_note",
-    description: "Simpan catatan/fakta ke second brain pemilik.",
-    input_schema: {
-      type: "object",
-      properties: {
-        content: { type: "string", description: "Isi catatan lengkap, bisa berdiri sendiri tanpa konteks obrolan." },
-        tags: { type: "string", description: "Kata kunci dipisah koma, mis. 'klien, budi, harga'." },
-      },
-      required: ["content"],
+  ),
+  fn("save_note", "Simpan catatan/fakta ke second brain pemilik.", {
+    type: "object",
+    properties: {
+      content: { type: "string", description: "Isi catatan lengkap, bisa berdiri sendiri tanpa konteks obrolan." },
+      tags: { type: "string", description: "Kata kunci dipisah koma, mis. 'klien, budi, harga'." },
     },
-  },
-  {
-    name: "search_notes",
-    description: "Cari catatan di second brain berdasarkan kata kunci. Query kosong = catatan terbaru.",
-    input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
-  },
-  { type: "web_search_20260209", name: "web_search", max_uses: 5 },
+    required: ["content"],
+  }),
+  fn("search_notes", "Cari catatan di second brain berdasarkan kata kunci. Query kosong = catatan terbaru.", {
+    type: "object",
+    properties: { query: { type: "string" } },
+    required: ["query"],
+  }),
 ];
+
+/** Isi pesan dari pemilik: teks dan/atau gambar (base64 JPEG). */
+export type UserPart = { type: "text"; text: string } | { type: "image"; base64: string };
+
+type ChatMessage =
+  | { role: "system" | "assistant"; content: string | null; tool_calls?: ToolCall[] }
+  | { role: "user"; content: string | Array<Record<string, unknown>> }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+interface ToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string | Record<string, unknown> };
+}
+
+interface ChatResponse {
+  choices?: { message: { content?: string | null; tool_calls?: ToolCall[] }; finish_reason?: string }[];
+}
 
 type TaskInput = { title: string; due?: string; remind?: string; priority?: db.Task["priority"]; person?: string; notes?: string };
 
@@ -116,7 +122,7 @@ async function executeTool(env: Env, ctx: RunContext, name: string, input: any):
     title: t.title,
     notes: t.notes || null,
     person: t.person || null,
-    priority: t.priority ?? "normal",
+    priority: ["low", "normal", "high"].includes(t.priority as string) ? t.priority : "normal",
     status,
     source: ctx.source,
     due_at: localToUtc(t.due, tz),
@@ -125,11 +131,12 @@ async function executeTool(env: Env, ctx: RunContext, name: string, input: any):
 
   switch (name) {
     case "add_task": {
+      if (!input.title) throw new Error("title wajib diisi");
       const id = await db.addTask(env.DB, toTask(input, "open"));
       return `Tersimpan: ${db.formatTask((await db.getTask(env.DB, id))!, tz)}`;
     }
     case "propose_tasks": {
-      const tasks: TaskInput[] = Array.isArray(input.tasks) ? input.tasks : [];
+      const tasks: TaskInput[] = Array.isArray(input.tasks) ? input.tasks.filter((t: TaskInput) => t?.title) : [];
       const ids: number[] = [];
       for (const t of tasks.slice(0, 10)) ids.push(await db.addTask(env.DB, toTask(t, "pending")));
       ctx.proposed.push(...ids);
@@ -137,9 +144,7 @@ async function executeTool(env: Env, ctx: RunContext, name: string, input: any):
     }
     case "list_tasks": {
       const status = input.status ?? "open";
-      const filter: db.TaskFilter = {
-        statuses: status === "all" ? undefined : [status],
-      };
+      const filter: db.TaskFilter = { statuses: status === "all" ? undefined : [status] };
       const range = input.range ?? "any";
       if (range === "today" || range === "tomorrow") {
         const [from, to] = localDayRange(tz, range === "today" ? 0 : 1);
@@ -168,6 +173,7 @@ async function executeTool(env: Env, ctx: RunContext, name: string, input: any):
       return `Diperbarui: ${db.formatTask((await db.getTask(env.DB, Number(input.id)))!, tz)}`;
     }
     case "save_note": {
+      if (!input.content) throw new Error("content wajib diisi");
       const id = await db.addNote(env.DB, input.content, input.tags);
       return `Catatan #${id} tersimpan.`;
     }
@@ -182,77 +188,129 @@ async function executeTool(env: Env, ctx: RunContext, name: string, input: any):
   }
 }
 
-/**
- * Setelah fallback di tengah output, blok thinking/tool_use sebelum blok `fallback` terakhir
- * tidak boleh dikirim ulang.
- */
-function echoable(content: BetaContentBlock[]): BetaContentBlock[] {
-  const lastFallback = content.map((b) => b.type).lastIndexOf("fallback");
-  if (lastFallback < 0) return content;
-  const drop = new Set(["thinking", "redacted_thinking", "tool_use", "server_tool_use"]);
-  return content.filter((b, i) => i > lastFallback || b.type === "fallback" || !drop.has(b.type));
+function parseArgs(args: ToolCall["function"]["arguments"]): Record<string, unknown> {
+  if (typeof args !== "string") return args ?? {};
+  try {
+    return args.trim() ? JSON.parse(args) : {};
+  } catch {
+    throw new Error("Argumen tool bukan JSON yang valid");
+  }
+}
+
+/** Beberapa model menyisipkan tag berpikir di content; buang sebelum dikirim ke Telegram. */
+function cleanText(s: string | null | undefined): string {
+  return (s ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+}
+
+type ModelMessage = { content?: string | null; tool_calls?: ToolCall[] };
+
+class QuotaError extends Error {}
+
+/** Claude lewat Puter (user-pays: memakai jatah akun Puter pemilik). */
+async function callPuter(env: Env, messages: ChatMessage[], tools?: typeof TOOLS): Promise<ModelMessage> {
+  const res = await fetch("https://api.puter.com/drivers/call", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;actually=json", Authorization: `Bearer ${env.PUTER_AUTH_TOKEN}` },
+    body: JSON.stringify({
+      interface: "puter-chat-completion",
+      driver: "ai-chat",
+      method: "complete",
+      args: { messages, model: env.MODEL, max_tokens: 4096, normalize: true, ...(tools ? { tools } : {}) },
+      auth_token: env.PUTER_AUTH_TOKEN,
+    }),
+  });
+  const json = (await res.json().catch(() => null)) as any;
+  if (
+    res.status === 402 ||
+    json?.error?.code === "insufficient_funds" ||
+    json?.error?.status === 402 ||
+    json?.metadata?.usage_limited === true
+  ) {
+    throw new QuotaError("Jatah Puter habis");
+  }
+  if (!res.ok || !json || json.success === false) {
+    throw new Error(`Puter ${res.status}: ${JSON.stringify(json?.error ?? json).slice(0, 300)}`);
+  }
+  const result = json.result ?? json;
+  if (!result.message) throw new Error(`Respons Puter tidak terduga: ${JSON.stringify(result).slice(0, 300)}`);
+  return result.message;
+}
+
+/** Model gratis Workers AI (cadangan, atau utama kalau Puter tidak dipasang). */
+async function callWorkersAI(env: Env, messages: ChatMessage[], tools?: typeof TOOLS): Promise<ModelMessage> {
+  const res = (await env.AI.run(env.FALLBACK_MODEL as any, {
+    messages,
+    ...(tools ? { tools } : {}),
+    max_tokens: 4096,
+  } as any)) as ChatResponse;
+  const msg = res.choices?.[0]?.message;
+  if (!msg) throw new Error(`Respons Workers AI tidak terduga: ${JSON.stringify(res).slice(0, 300)}`);
+  return msg;
 }
 
 export interface RunOptions {
   source: string;
-  effort: "low" | "medium" | "high";
   useTools: boolean;
   history: { role: "user" | "assistant"; content: string }[];
 }
 
 /** Jalankan satu giliran agen sampai selesai. */
-export async function runAgent(
-  env: Env,
-  userContent: BetaContentBlockParam[],
-  opts: RunOptions,
-): Promise<{ text: string; proposed: number[] }> {
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+export async function runAgent(env: Env, parts: UserPart[], opts: RunOptions): Promise<{ text: string; proposed: number[] }> {
   const ctx: RunContext = { source: opts.source, proposed: [] };
 
-  const messages: BetaMessageParam[] = normalizeHistory(opts.history);
-  messages.push({
-    role: "user",
-    content: [{ type: "text", text: `[Waktu sekarang: ${nowContext(env.TIMEZONE_OFFSET)}]` }, ...userContent],
-  });
+  const userContent: Array<Record<string, unknown>> = [
+    { type: "text", text: `[Waktu sekarang: ${nowContext(env.TIMEZONE_OFFSET)}]` },
+    ...parts.map((p) =>
+      p.type === "text"
+        ? { type: "text", text: p.text }
+        : { type: "image_url", image_url: { url: `data:image/jpeg;base64,${p.base64}` } },
+    ),
+  ];
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    ...normalizeHistory(opts.history),
+    { role: "user", content: userContent },
+  ];
+
+  const tools = opts.useTools ? TOOLS : undefined;
+  let usePuter = !!env.PUTER_AUTH_TOKEN;
+  let notice = "";
 
   let text = "";
-  for (let i = 0; i < 12; i++) {
-    const res = await client.beta.messages.create({
-      model: env.MODEL,
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: opts.effort },
-      system: SYSTEM_PROMPT,
-      ...(opts.useTools ? { tools: TOOLS } : {}),
-      messages,
-    });
-
-    if (res.stop_reason === "refusal") {
-      return { text: "Maaf, permintaan ini tidak bisa aku proses.", proposed: ctx.proposed };
+  for (let i = 0; i < 8; i++) {
+    let msg: ModelMessage;
+    if (usePuter) {
+      try {
+        msg = await callPuter(env, messages, tools);
+      } catch (err) {
+        // Sekali gagal, sisa giliran ini pakai cadangan supaya bot tetap jalan.
+        console.error("Puter gagal, pindah ke Workers AI", err);
+        usePuter = false;
+        notice =
+          err instanceof QuotaError
+            ? "⚠️ Jatah Claude di Puter habis, balasan ini pakai otak cadangan (gratis)."
+            : "⚠️ Claude lagi bermasalah, balasan ini pakai otak cadangan (gratis).";
+        msg = await callWorkersAI(env, messages, tools);
+      }
+    } else {
+      msg = await callWorkersAI(env, messages, tools);
     }
+    text = cleanText(msg.content);
 
-    messages.push({ role: "assistant", content: echoable(res.content) as BetaContentBlockParam[] });
-    text = res.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { text: string }).text)
-      .join("")
-      .trim();
+    const calls = msg.tool_calls ?? [];
+    if (!calls.length) break;
 
-    if (res.stop_reason === "pause_turn") continue;
-    if (res.stop_reason !== "tool_use") break;
-
-    const toolUses = res.content.filter((b) => b.type === "tool_use");
-    const results: BetaToolResultBlockParam[] = await Promise.all(
-      toolUses.map(async (b) => {
-        try {
-          return { type: "tool_result", tool_use_id: b.id, content: await executeTool(env, ctx, b.name, b.input) } as const;
-        } catch (err) {
-          return { type: "tool_result", tool_use_id: b.id, content: String(err), is_error: true } as const;
-        }
-      }),
-    );
-    messages.push({ role: "user", content: results });
+    messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: calls });
+    for (const call of calls) {
+      let result: string;
+      try {
+        result = await executeTool(env, ctx, call.function.name, parseArgs(call.function.arguments));
+      } catch (err) {
+        result = `ERROR: ${String(err)}`;
+      }
+      messages.push({ role: "tool", tool_call_id: call.id, content: result });
+    }
   }
 
   if (!text && ctx.proposed.length) text = "Ada usulan tugas di bawah, silakan cek 👇";
@@ -260,7 +318,7 @@ export async function runAgent(
 }
 
 /** Riwayat harus diawali user dan bergantian user/assistant. */
-function normalizeHistory(history: { role: "user" | "assistant"; content: string }[]): BetaMessageParam[] {
+function normalizeHistory(history: { role: "user" | "assistant"; content: string }[]): ChatMessage[] {
   const out: { role: "user" | "assistant"; content: string }[] = [];
   for (const h of history) {
     const prev = out[out.length - 1];

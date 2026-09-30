@@ -34,10 +34,11 @@
   },
 
   "vars": {
-    "MODEL": "claude-opus-5-5",
+    "MODEL": "claude-opus-5-5",                 // Claude via Puter
+    "FALLBACK_MODEL": "@cf/zai-org/glm-5.3-flash", // cadangan gratis (Workers AI)
     "TIMEZONE_OFFSET": "+07:00",
     "OWNER_CHAT_ID": ""
   }
   // Secrets (pakai `npx wrangler secret put <NAMA>`):
-  //   ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET
+  //   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, PUTER_AUTH_TOKEN (opsional, lihat README)
 }
