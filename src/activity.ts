@@ -55,6 +55,8 @@ export const TOOL_ACTIVITY: Record<string, { label: string; spot?: Spot }> = {
   forget_preference: { label: "Menghapus preferensi", spot: "profile" },
   save_profile: { label: "Memperbarui profil", spot: "profile" },
   get_profile: { label: "Membaca profil pemilik", spot: "profile" },
+  search_memory: { label: "Mencari di memori jangka panjang", spot: "cabinet" },
+  remember_fact: { label: "Mengingat fakta baru", spot: "cabinet" },
   gmail_search: { label: "Membuka Gmail", spot: "mail" },
   gmail_read: { label: "Membaca email", spot: "mail" },
   gmail_draft: { label: "Menulis draf email", spot: "mail" },

@@ -7,6 +7,7 @@ import * as profile from "./profile";
 import { executeTool, receipt, type RunContext } from "./agent";
 import { Telegram } from "./telegram";
 import { logTool } from "./activity";
+import * as memory from "./memory";
 import { localDayRange, nowContext } from "./time";
 
 // Server MCP "Second Brain": membuka tugas, catatan, profil & preferensi pemilik ke Claude
@@ -16,6 +17,7 @@ const INSTRUCTIONS = `Second Brain milik Willy: tugas/pengingat, catatan, profil
 - Semua waktu dalam WIB (UTC+07:00). Isi waktu dengan format lokal "YYYY-MM-DD HH:mm"; kalau cuma tanggal, dianggap 09:00.
 - "remind" = kapan bot Telegram mengirim pengingat. Kosong = 60 menit sebelum "due".
 - Baca get_profile di awal untuk memahami pemilik, dan patuhi preferensinya.
+- search_memory berisi fakta jangka panjang yang dikumpulkan dari obrolan (dengan tanggal; yang terbaru biasanya berlaku). Pakai remember_fact untuk menyimpan fakta penting baru tentang pemilik, timnya, atau bisnisnya.
 - Sebelum menambah tugas, cek list_tasks supaya tidak dobel. Tambah beberapa tugas sekaligus dengan add_tasks.
 - Setiap perubahan dikabarkan ke Telegram pemilik sebagai bukti.`;
 
@@ -47,7 +49,7 @@ async function write(env: Env, name: string, input: unknown) {
   return text(result);
 }
 
-const WRITES = new Set(["add_tasks", "update_task", "add_note", "update_note", "add_preference"]);
+const WRITES = new Set(["add_tasks", "update_task", "add_note", "update_note", "add_preference", "remember_fact"]);
 
 /** Setiap panggilan tool dari Claude tampil di Kantor 3D (karakter "Claude"). */
 function withActivity(env: Env, server: McpServer): McpServer {
@@ -167,7 +169,7 @@ function buildServer(env: Env): McpServer {
     "search_notes",
     {
       title: "Cari catatan",
-      description: "Cari catatan di Second Brain (judul, isi, tag). Query kosong = catatan terbaru.",
+      description: "Cari catatan di Second Brain berdasarkan makna & kata kunci (judul, isi, tag). Query kosong = catatan terbaru.",
       inputSchema: {
         query: z.string().optional(),
         tag: z.string().optional().describe("Filter satu tag, mis. marketing."),
@@ -176,7 +178,7 @@ function buildServer(env: Env): McpServer {
       annotations: readOnly,
     },
     async ({ query = "", tag, limit = 15 }) => {
-      const notes = await db.searchNotes(env.DB, query, limit, tag || undefined);
+      const notes = await memory.searchNotesHybrid(env, query, limit, tag || undefined);
       return text(
         notes.length
           ? notes
@@ -218,8 +220,40 @@ function buildServer(env: Env): McpServer {
     async ({ id, ...patch }) => {
       const ok = await db.updateNote(env.DB, id, patch);
       if (!ok) return text(`Catatan #${id} tidak ditemukan atau tidak ada perubahan.`);
+      await memory.indexNote(env, id);
       const n = await db.getNote(env.DB, id);
       return text(`Catatan #${id} diperbarui${n?.title ? `: ${n.title}` : ""}.`);
+    },
+  );
+
+  server.registerTool(
+    "search_memory",
+    {
+      title: "Cari memori",
+      description: "Cari fakta jangka panjang tentang pemilik, orang di sekitarnya, bisnis, dan rencananya (berdasarkan makna).",
+      inputSchema: { query: z.string().min(1), limit: z.number().int().min(1).max(30).optional() },
+      annotations: readOnly,
+    },
+    async ({ query, limit = 10 }) => {
+      const rows = await memory.recallMemories(env, query, limit);
+      return text(rows.length ? rows.map((m) => `(${memory.localDate(env, m.created_at)}) ${m.content}`).join("\n") : "Tidak ada memori yang cocok.");
+    },
+  );
+
+  server.registerTool(
+    "remember_fact",
+    {
+      title: "Simpan ke memori",
+      description: "Simpan satu fakta penting ke memori jangka panjang. Fakta yang sudah ada tidak disimpan dobel.",
+      inputSchema: {
+        content: z.string().min(5).describe("Satu kalimat utuh, dengan tanggal absolut kalau ada waktu."),
+        entities: z.array(z.string()).optional().describe("Nama orang/brand/tempat yang disebut."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ content, entities }) => {
+      const res = await memory.addMemory(env, content, "claude", entities ?? []);
+      return text(res.id ? `Fakta tersimpan di memori (${res.id}).` : `SUDAH ADA di memori: ${res.duplicateOf?.content}`);
     },
   );
 

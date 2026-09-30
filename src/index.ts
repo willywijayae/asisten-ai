@@ -6,6 +6,7 @@ import { Telegram, type TgCallbackQuery, type TgMessage, type TgUpdate } from ".
 import { formatLocal } from "./time";
 import { sendBriefing } from "./briefing";
 import { clip, logActivity, pruneActivity } from "./activity";
+import { extractMemories, reindexAll } from "./memory";
 import { handleApi } from "./api";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp";
@@ -32,13 +33,13 @@ Perintah:
 Otomatis: briefing pagi 07:00, rekap malam 21:00, dan pengingat sebelum deadline.`;
 
 const app = {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     // Halaman izin OAuth untuk konektor MCP (Claude).
     if (url.pathname === "/authorize") return handleAuthorize(req, env);
 
-    if (url.pathname.startsWith("/api/")) return handleApi(req, env, url);
+    if (url.pathname.startsWith("/api/")) return handleApi(req, env, url, ctx);
 
     if (req.method === "POST" && url.pathname === "/telegram") {
       if (req.headers.get("x-telegram-bot-api-secret-token") !== env.TELEGRAM_WEBHOOK_SECRET) {
@@ -90,6 +91,7 @@ const app = {
         owner_set: !!env.OWNER_CHAT_ID,
         puter: !!env.PUTER_AUTH_TOKEN,
         ...(url.searchParams.has("ping") ? { puterPing: await puterPing(env) } : {}),
+        ...(url.searchParams.has("reindex") ? { reindex: await reindexAll(env) } : {}),
       });
     }
 
@@ -229,6 +231,10 @@ async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
       ],
     ]);
   }
+
+  // Setelah semua balasan terkirim: ambil fakta tahan lama untuk memori jangka panjang.
+  // Saat wawancara profil dilewati (hasilnya sudah masuk profil).
+  if (!(await profile.interviewActive(env))) await extractMemories(env, { user: historyText, reply, source });
 }
 
 async function buildUserContent(

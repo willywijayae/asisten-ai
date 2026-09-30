@@ -34,6 +34,9 @@
 
   // Workers AI: transkrip voice note (Whisper).
   "ai": { "binding": "AI" },
+  // Indeks vektor untuk memori & catatan (bge-m3, 1024 dimensi, cosine). `remote` → wrangler dev
+  // juga memakai indeks asli (Vectorize belum bisa disimulasikan lokal).
+  "vectorize": [{ "binding": "VECTORIZE", "index_name": "asisten-ai-memory", "remote": true }],
 
   "triggers": {
     "crons": [

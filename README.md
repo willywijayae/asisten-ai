@@ -26,6 +26,13 @@ Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Teleg
 - **Profil & Memori** — profil kamu (hasil wawancara `/profil` atau ditulis sendiri) dan daftar preferensi permanen; keduanya ikut dibaca di setiap percakapan.
 - **Sistem** — status bot/webhook/model, kirim briefing manual, reset riwayat.
 
+### Memori jangka panjang (ala [mem0](https://github.com/mem0ai/mem0), gratis)
+
+- Setelah tiap obrolan (Telegram & Chat AI), Gemma di Workers AI mengambil **fakta tahan lama** (tim, klien, rencana, angka) dan menyimpannya ke tabel `memories`. Fakta hanya ditambah, tidak pernah ditimpa; yang mirip ≥ 0,9 dengan fakta lama dilewati.
+- **Pencarian gabungan**: makna (`@cf/baai/bge-m3` + Vectorize `asisten-ai-memory`), kata kunci, dan nama/entitas, digabung dengan reciprocal rank fusion. Fakta yang lebih baru sedikit diutamakan. Dipakai di konteks otomatis setiap pesan, tool `search_memory`/`search_notes`, MCP, dan pencarian catatan di website.
+- Semua fakta bisa dicari, ditambah, dan dihapus di **Profil & Memori**. Tombol **Indeks ulang** membangun ulang vektor catatan & memori (atau `/status?secret=…&reindex`).
+- Kode: `src/memory.ts`.
+
 Modul baru (mis. Marketing & Riset) ditambahkan di `web/src/components/Layout.tsx` (menu) dan `web/src/App.tsx` (halaman), dengan endpoint di `src/api.ts`.
 
 ## Arsitektur

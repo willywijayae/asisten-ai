@@ -4,6 +4,7 @@ import * as google from "./google";
 import * as profile from "./profile";
 import { formatLocal, localDayRange, localToUtc, nowContext } from "./time";
 import { clip, logActivity, logTool, type AgentId } from "./activity";
+import * as memory from "./memory";
 
 const SYSTEM_PROMPT = `Kamu adalah asisten pribadi (chief of staff) milik satu orang: pemilik bot Telegram ini.
 Tugasmu: mencatat & mengawal komitmen, mengingatkan jadwal, merangkum informasi, dan menyimpan catatan (second brain).
@@ -21,13 +22,14 @@ Aturan kerja:
 - Kalau tool menjawab "SUDAH ADA", jangan buat ulang; sampaikan bahwa tugas itu sudah ada.
 - Kalau isinya pesan yang DITERUSKAN, voice note, atau foto/screenshot chat, JANGAN langsung add_task. Ekstrak komitmen, janji, deadline, atau permintaan yang relevan untuk pemilik, lalu pakai propose_tasks supaya pemilik bisa approve dulu. Setelah itu rangkum isi pesannya singkat.
 - Kalau pemilik minta "catat bahwa...", "simpan info...", atau memberi fakta yang perlu diingat (nomor, alamat, preferensi, hasil meeting), pakai save_note.
-- Sebelum menjawab pertanyaan tentang hal yang pernah dicatat, cari dulu dengan search_notes / list_tasks. Jangan mengarang data pribadi.
+- Sebelum menjawab pertanyaan tentang hal yang pernah dicatat, cari dulu dengan search_memory / search_notes / list_tasks. Jangan mengarang data pribadi.
 - Untuk menandai selesai/membatalkan/mengubah tugas, cari id-nya dulu dengan list_tasks kalau belum tahu, lalu pakai update_task.
 - Kamu tidak punya akses internet umum. Kalau ditanya info terkini, jawab dari pengetahuanmu dan bilang bisa jadi sudah tidak update.
 - Jangan pernah mengaku sudah mengirim email/pesan ke orang lain; kamu hanya bisa membuat draf untuk pemilik.
 - Kalau ada yang ambigu dan penting (misal jam tidak jelas), tetap catat dengan tebakan terbaik lalu sebutkan asumsinya, daripada banyak bertanya.
-- Saat menjawab dari catatan atau tugas, sebut sumbernya singkat (mis. "menurut catatan #12"). Bedakan yang tercatat dengan dugaanmu sendiri (tandai dengan "kemungkinan" / "dugaanku").
-- Pesan pemilik bisa disertai blok <konteks_otomatis>: hasil pencarian otomatis di catatan & tugas. Pakai kalau relevan, abaikan kalau tidak. Untuk pencarian lain tetap pakai search_notes / list_tasks.
+- Saat menjawab dari catatan, memori, atau tugas, sebut sumbernya singkat (mis. "menurut catatan #12", "dari memori 3 Okt"). Bedakan yang tercatat dengan dugaanmu sendiri (tandai dengan "kemungkinan" / "dugaanku").
+- Pesan pemilik bisa disertai blok <konteks_otomatis>: hasil pencarian otomatis (berdasarkan makna) di memori jangka panjang, catatan, dan tugas. Pakai kalau relevan, abaikan kalau tidak. Memori punya tanggal; kalau ada yang bertentangan, yang terbaru biasanya yang berlaku. Untuk pencarian lain pakai search_memory / search_notes / list_tasks.
+- Fakta dari obrolan diingat otomatis di latar belakang. Pakai remember_fact hanya kalau pemilik secara eksplisit minta sesuatu diingat ("ingat ya...", "catat di memori...") dan itu fakta, bukan catatan panjang (save_note) atau aturan cara kerjamu (remember_preference).
 - Kalau pemilik mengoreksi caramu bekerja atau menyatakan preferensi yang berlaku ke depan (gaya bahasa, sapaan, arti istilah, kebiasaan, hal yang tidak disukai), simpan dengan remember_preference lalu konfirmasi singkat. Jangan simpan hal sekali pakai; itu bukan preferensi. Kalau pemilik minta melupakan preferensi, pakai forget_preference.
 - WAJIB: setiap permintaan mencatat, menyimpan, mengubah, atau menyelesaikan sesuatu harus dilakukan dengan memanggil tool yang sesuai di giliran ini. Jangan pernah bilang "sudah dicatat/disimpan/diubah" sebelum menerima hasil tool yang sukses. Balasan lama di riwayat obrolan tidak berarti apa pun sudah tersimpan.`;
 
@@ -112,7 +114,7 @@ const TOOLS = [
     },
     required: ["content"],
   }),
-  fn("search_notes", "Cari catatan di second brain berdasarkan kata kunci. Query kosong = catatan terbaru.", {
+  fn("search_notes", "Cari catatan di second brain berdasarkan makna & kata kunci. Query kosong = catatan terbaru.", {
     type: "object",
     properties: { query: { type: "string" } },
     required: ["query"],
@@ -120,6 +122,19 @@ const TOOLS = [
 ];
 
 const MEMORY_TOOLS = [
+  fn("search_memory", "Cari di memori jangka panjang: fakta tentang pemilik, orang di sekitarnya, bisnis, rencana (berdasarkan makna).", {
+    type: "object",
+    properties: { query: { type: "string", description: 'Pertanyaan atau topik, mis. "budget iklan bulan ini" atau "Justin".' } },
+    required: ["query"],
+  }),
+  fn("remember_fact", "Simpan satu fakta ke memori jangka panjang saat pemilik eksplisit minta diingat.", {
+    type: "object",
+    properties: {
+      content: { type: "string", description: "Satu kalimat utuh yang bisa berdiri sendiri, dengan tanggal absolut kalau ada waktu." },
+      entities: { type: "array", items: { type: "string" }, description: "Nama orang/brand/tempat yang disebut." },
+    },
+    required: ["content"],
+  }),
   fn("remember_preference", "Simpan preferensi/koreksi permanen pemilik tentang cara kamu bekerja. Tulis sebagai aturan singkat yang jelas.", {
     type: "object",
     properties: { content: { type: "string", description: 'mis. "Panggil pemilik dengan \'Mas Willy\'" atau "\'Tim\' berarti tim sales expert SVO".' } },
@@ -309,10 +324,11 @@ export async function executeTool(env: Env, ctx: RunContext, name: string, input
       if (!input.content) throw new Error("content wajib diisi");
       const id = await db.addNote(env.DB, { content: input.content, tags: input.tags, title: input.title });
       ctx.notes.push(id);
+      await memory.indexNote(env, id);
       return `Catatan #${id} tersimpan.`;
     }
     case "search_notes": {
-      const rows = await db.searchNotes(env.DB, input.query ?? "");
+      const rows = await memory.searchNotesHybrid(env, String(input.query ?? ""));
       return rows.length
         ? rows
             .map((n) => `#${n.id} (${n.created_at.slice(0, 10)}) ${n.title ? n.title + ": " : ""}${n.content}${n.tags ? ` [${n.tags}]` : ""}`)
@@ -355,6 +371,17 @@ export async function executeTool(env: Env, ctx: RunContext, name: string, input
       if (!input.title || !input.content) throw new Error("title dan content wajib diisi");
       const f = await google.driveSaveDoc(env, String(input.title), String(input.content));
       return `Tersimpan di Google Drive folder "Second Brain": ${f.link}`;
+    }
+    case "search_memory": {
+      const rows = await memory.recallMemories(env, String(input.query ?? ""), 10);
+      return rows.length
+        ? rows.map((m) => `(${memory.localDate(env, m.created_at)}) ${m.content}`).join("\n")
+        : "Tidak ada memori yang cocok.";
+    }
+    case "remember_fact": {
+      if (!String(input.content ?? "").trim()) throw new Error("content wajib diisi");
+      const res = await memory.addMemory(env, String(input.content), ctx.source, Array.isArray(input.entities) ? input.entities : []);
+      return res.id ? `Fakta tersimpan di memori (${res.id}).` : `SUDAH ADA di memori: ${res.duplicateOf?.content}`;
     }
     case "remember_preference": {
       if (!input.content) throw new Error("content wajib diisi");
@@ -520,7 +547,7 @@ export async function runAgent(
   // Konteks otomatis dari second brain (bukan saat wawancara, supaya fokus).
   if (opts.useTools && !interviewing) {
     const query = parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join(" ");
-    const context = query ? await profile.autoContext(env, query) : "";
+    const context = query ? await memory.autoContext(env, query) : "";
     if (context) userContent.push({ type: "text", text: context });
   }
   let tier: "fast" | "smart" = opts.tier === "smart" || wantsSmart(parts) ? "smart" : "fast";
@@ -554,6 +581,7 @@ export async function runAgent(
     "drive_save",
     "gmail_draft",
     "remember_preference",
+    "remember_fact",
     "forget_preference",
     "save_profile",
   ]);

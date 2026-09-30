@@ -1,5 +1,4 @@
 import type { Env } from "./env";
-import * as db from "./db";
 
 // Profil pemilik, preferensi permanen, dan konteks otomatis untuk setiap pesan.
 
@@ -106,33 +105,4 @@ export function keywords(text: string): string[] {
     .filter((w) => w.length >= 3 && !STOPWORDS.has(w) && !/^\d+$/.test(w));
   // Kata yang lebih panjang biasanya lebih spesifik.
   return [...new Set(words)].sort((a, b) => b.length - a.length).slice(0, 6);
-}
-
-/** Blok <konteks_otomatis> untuk disisipkan ke pesan, atau "" kalau tidak ada yang cocok. */
-export async function autoContext(env: Env, text: string): Promise<string> {
-  const words = keywords(text);
-  if (!words.length) return "";
-
-  const [notes, tasks] = await Promise.all([
-    db.searchNotes(env.DB, words.join(" "), 4),
-    db.listTasks(env.DB, { statuses: ["open", "pending"], limit: 300 }),
-  ]);
-  const scoredTasks = tasks
-    .map((t) => {
-      const hay = [t.title, t.notes, t.person].join(" ").toLowerCase();
-      return { t, score: words.filter((w) => hay.includes(w)).length };
-    })
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
-    .map((x) => x.t);
-
-  if (!notes.length && !scoredTasks.length) return "";
-  const lines: string[] = [];
-  for (const n of notes) {
-    const body = n.content.length > 400 ? n.content.slice(0, 400) + "…" : n.content;
-    lines.push(`- catatan #${n.id}${n.title ? ` "${n.title}"` : ""}: ${body}${n.tags ? ` [${n.tags}]` : ""}`);
-  }
-  for (const t of scoredTasks) lines.push(`- ${db.formatTask(t, env.TIMEZONE_OFFSET)}`);
-  return `<konteks_otomatis>\nHasil pencarian otomatis di second brain untuk pesan ini (bisa saja tidak relevan):\n${lines.join("\n")}\n</konteks_otomatis>`;
 }

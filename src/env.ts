@@ -5,6 +5,8 @@ export interface Env {
   DB: D1Database;
   JOBS: Queue<TgUpdate>;
   AI: Ai;
+  /** Indeks vektor memori jangka panjang & catatan. */
+  VECTORIZE: Vectorize;
   /** Token akun Puter (opsional). Kalau ada, otak utama = Claude via Puter. */
   PUTER_AUTH_TOKEN?: string;
   TELEGRAM_BOT_TOKEN: string;

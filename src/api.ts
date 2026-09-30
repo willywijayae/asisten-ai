@@ -8,6 +8,7 @@ import * as google from "./google";
 import * as profile from "./profile";
 import { localDayRange, localToUtc } from "./time";
 import { officeState } from "./activity";
+import * as memory from "./memory";
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(data, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -72,9 +73,9 @@ async function readJson(req: Request): Promise<any> {
   }
 }
 
-export async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
+export async function handleApi(req: Request, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
   try {
-    return await route(req, env, url);
+    return await route(req, env, url, ctx);
   } catch (err) {
     if (err instanceof HttpError) return json({ error: err.message }, err.status);
     console.error("API error", err);
@@ -82,7 +83,7 @@ export async function handleApi(req: Request, env: Env, url: URL): Promise<Respo
   }
 }
 
-async function route(req: Request, env: Env, url: URL): Promise<Response> {
+async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
   const path = url.pathname.replace(/^\/api/, "") || "/";
   const method = req.method;
 
@@ -225,8 +226,8 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
 
   // --- Catatan (second brain) ---
   if (path === "/notes" && method === "GET") {
-    const notes = await db.searchNotes(
-      env.DB,
+    const notes = await memory.searchNotesHybrid(
+      env,
       url.searchParams.get("q") ?? "",
       Math.min(Number(url.searchParams.get("limit") ?? 200), 500),
       url.searchParams.get("tag") || undefined,
@@ -238,6 +239,7 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
     const b = await readJson(req);
     if (!String(b.content ?? "").trim()) throw new HttpError(400, "Isi catatan wajib diisi");
     const id = await db.addNote(env.DB, { content: String(b.content), title: b.title, tags: b.tags });
+    await memory.indexNote(env, id);
     return json({ note: await db.getNote(env.DB, id) }, 201);
   }
   const noteMatch = /^\/notes\/(\d+)$/.exec(path);
@@ -248,12 +250,37 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
       if (b.content !== undefined && !String(b.content).trim()) throw new HttpError(400, "Isi catatan wajib diisi");
       if (!(await db.getNote(env.DB, id))) throw new HttpError(404, "Catatan tidak ditemukan");
       await db.updateNote(env.DB, id, { content: b.content, title: b.title, tags: b.tags });
+      await memory.indexNote(env, id);
       return json({ note: await db.getNote(env.DB, id) });
     }
     if (method === "DELETE") {
       if (!(await db.deleteNote(env.DB, id))) throw new HttpError(404, "Catatan tidak ditemukan");
+      await memory.unindexNote(env, id);
       return json({ ok: true });
     }
+  }
+
+  // --- Memori jangka panjang ---
+  if (path === "/memories" && method === "GET") {
+    const q = url.searchParams.get("q")?.trim();
+    const [memories, total] = await Promise.all([
+      q ? memory.recallMemories(env, q, 30) : memory.listMemories(env, 300),
+      env.DB.prepare("SELECT count(*) AS n FROM memories").first<{ n: number }>(),
+    ]);
+    return json({ memories, total: total?.n ?? 0 });
+  }
+  if (path === "/memories" && method === "POST") {
+    const { content } = await readJson(req);
+    if (String(content ?? "").trim().length < 5) throw new HttpError(400, "Tulis faktanya dulu");
+    const res = await memory.addMemory(env, String(content), "manual");
+    if (!res.id) throw new HttpError(409, `Sudah ada di memori: ${res.duplicateOf?.content ?? ""}`);
+    return json({ id: res.id }, 201);
+  }
+  if (path === "/memories/reindex" && method === "POST") return json(await memory.reindexAll(env));
+  const memMatch = /^\/memories\/(\d+)$/.exec(path);
+  if (memMatch && method === "DELETE") {
+    if (!(await memory.deleteMemory(env, Number(memMatch[1])))) throw new HttpError(404, "Memori tidak ditemukan");
+    return json({ ok: true });
   }
 
   // --- Riwayat & chat ---
@@ -283,6 +310,10 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
     });
     await db.appendHistory(env.DB, "user", text);
     await db.appendHistory(env.DB, "assistant", reply);
+    // Ambil fakta untuk memori jangka panjang setelah respons dikirim.
+    if (input === text && !(await profile.interviewActive(env))) {
+      ctx.waitUntil(memory.extractMemories(env, { user: text, reply, source: "web" }));
+    }
     const tasks = (await Promise.all(proposed.map((id) => db.getTask(env.DB, id)))).filter(Boolean);
     return json({ reply, proposed: tasks, receipt });
   }

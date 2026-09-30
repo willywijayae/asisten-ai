@@ -56,8 +56,8 @@ export const ROSTER: AgentDef[] = [
   {
     id: "gemma",
     name: "Gemma",
-    role: "Otak cadangan",
-    about: "Model gratis Workers AI yang menggantikan saat Claude lewat Puter tidak bisa dihubungi.",
+    role: "Juru arsip & cadangan",
+    about: "Model gratis Workers AI: mengarsipkan fakta penting dari tiap obrolan ke memori jangka panjang, dan menggantikan saat Claude lewat Puter tidak bisa dihubungi.",
     color: "#f59e0b",
     look: { skin: "#cbd5e1", hair: "#64748b", hairStyle: "none", top: "#475569", bottom: "#1f2937", extra: "antenna", extraColor: "#f59e0b" },
     desk: [7, -1.5],
