@@ -58,6 +58,24 @@ export default {
       return Response.json({ webhook, url: `${url.origin}/telegram` });
     }
 
+    // Diagnosa: status webhook dari sisi Telegram (error terakhir, antrean update).
+    if (url.pathname === "/status") {
+      if (url.searchParams.get("secret") !== env.TELEGRAM_WEBHOOK_SECRET) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const tg = new Telegram(env.TELEGRAM_BOT_TOKEN);
+      const [bot, info] = await Promise.all([
+        tg.call<{ username: string }>("getMe", {}),
+        tg.call("getWebhookInfo", {}),
+      ]);
+      return Response.json({
+        bot: `@${bot.username}`,
+        webhook: info,
+        owner_set: !!env.OWNER_CHAT_ID,
+        puter: !!env.PUTER_AUTH_TOKEN,
+      });
+    }
+
     return new Response("asisten-ai jalan ✅");
   },
 
