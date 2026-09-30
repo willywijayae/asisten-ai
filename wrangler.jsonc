@@ -3,14 +3,14 @@
   "name": "asisten-ai",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "observability": { "enabled": true },
 
   // Website admin (React, hasil build di web/dist). Path di bawah ditangani Worker dulu.
   "assets": {
     "directory": "./web/dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/telegram", "/setup", "/status"]
+    "run_worker_first": ["/api/*", "/telegram", "/setup", "/status", "/mcp", "/authorize", "/oauth/*", "/.well-known/*"]
   },
 
   "d1_databases": [
@@ -21,6 +21,9 @@
       "migrations_dir": "migrations"
     }
   ],
+
+  // Token & grant OAuth untuk konektor MCP (Claude).
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "e782c652cc4b4ec2928513dba219a827" }],
 
   // Update Telegram diantrekan dulu supaya webhook langsung balas 200,
   // lalu diproses di consumer (boleh jalan sampai 15 menit).
@@ -45,6 +48,7 @@
     "MODEL_SMART": "claude-opus-5-5",           // Claude via Puter: dipanggil kalau rumit
     "FALLBACK_MODEL": "@cf/google/gemma-4-26b-a4b-it", // cadangan gratis (Workers AI, paket Free)
     "TIMEZONE_OFFSET": "+07:00",
+    "PUBLIC_URL": "https://asisten-ai.willywijaya46.workers.dev",
     "OWNER_CHAT_ID": "1001715052"
   }
   // Secrets (pakai `npx wrangler secret put <NAMA>`):

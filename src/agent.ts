@@ -227,7 +227,7 @@ export interface RunContext {
   notes: number[];
 }
 
-async function executeTool(env: Env, ctx: RunContext, name: string, input: any): Promise<string> {
+export async function executeTool(env: Env, ctx: RunContext, name: string, input: any): Promise<string> {
   const tz = env.TIMEZONE_OFFSET;
   const toTask = (t: TaskInput, status: db.Task["status"]): db.NewTask => ({
     title: t.title,
@@ -621,7 +621,7 @@ export async function runAgent(
 }
 
 /** Bukti dari database tentang apa yang benar-benar tersimpan di giliran ini (bukan kata model). */
-async function receipt(env: Env, ctx: RunContext): Promise<string> {
+export async function receipt(env: Env, ctx: RunContext): Promise<string> {
   const lines: string[] = [];
   const tz = env.TIMEZONE_OFFSET;
   for (const [label, ids] of [

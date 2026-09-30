@@ -11,6 +11,7 @@ const SOURCE_LABEL: Record<string, string> = {
   voice: "Voice note",
   photo: "Foto",
   web: "Website",
+  claude: "Claude",
 };
 
 export function TaskRow({ task, onChanged, onEdit }: { task: Task; onChanged: () => void; onEdit: (t: Task) => void }) {

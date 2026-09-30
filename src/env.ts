@@ -1,3 +1,4 @@
+import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
 import type { TgUpdate } from "./telegram";
 
 export interface Env {
@@ -16,6 +17,11 @@ export interface Env {
   /** Model Workers AI gratis sebagai cadangan. */
   FALLBACK_MODEL: string;
   TIMEZONE_OFFSET: string;
+  /** URL publik Worker, dipakai untuk metadata OAuth/MCP. */
+  PUBLIC_URL: string;
+  /** Penyimpanan OAuth (konektor MCP) & helper yang disuntikkan OAuthProvider. */
+  OAUTH_KV: KVNamespace;
+  OAUTH_PROVIDER: OAuthHelpers;
   /** OAuth client Google (opsional) untuk Gmail & Drive. */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;

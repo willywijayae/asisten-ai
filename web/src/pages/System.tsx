@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { FolderOpen, LogOut, Mail, Moon, RotateCcw, Sun, Unplug } from "lucide-react";
+import { Copy, FolderOpen, LogOut, Mail, Moon, Plug, RotateCcw, Sun, Unplug } from "lucide-react";
 import { api, type GoogleStatus, type SystemInfo } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import { fmtWhen } from "../lib/time";
@@ -89,6 +89,33 @@ export function System({ onLogout }: { onLogout: () => void }) {
                 <code className="text-xs">{data.fallbackModel}</code>
               </Row>
               <Row label="Zona waktu">UTC{data.timezone}</Row>
+            </Card>
+          </section>
+
+          <section className="lg:col-span-2">
+            <SectionTitle>Konektor Claude (MCP)</SectionTitle>
+            <Card className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                  <Plug className="size-4" />
+                </div>
+                <div className="min-w-0 flex-1 text-sm">
+                  <p className="font-medium">Hubungkan Second Brain ke Claude</p>
+                  <p className="mt-0.5 text-muted">
+                    Claude (desktop, web, HP) bisa membaca & menambah tugas, catatan, dan profil kamu. Di claude.ai → Settings → Connectors →
+                    Add custom connector, tempel URL ini, lalu setujui di halaman izin.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <code className="min-w-0 flex-1 truncate rounded-md bg-surface-2 px-2.5 py-1.5 text-xs">{`${window.location.origin}/mcp`}</code>
+                    <Button
+                      size="sm"
+                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/mcp`).then(() => toast.ok("URL disalin"))}
+                    >
+                      <Copy className="size-3.5" /> Salin
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </Card>
           </section>
 

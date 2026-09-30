@@ -6,6 +6,9 @@ import { Telegram, type TgCallbackQuery, type TgMessage, type TgUpdate } from ".
 import { formatLocal } from "./time";
 import { sendBriefing } from "./briefing";
 import { handleApi } from "./api";
+import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
+import { mcpHandler } from "./mcp";
+import { handleAuthorize } from "./oauth";
 import * as profile from "./profile";
 
 const HELP = `Halo! Aku asisten pribadimu 🤖
@@ -27,9 +30,12 @@ Perintah:
 
 Otomatis: briefing pagi 07:00, rekap malam 21:00, dan pengingat sebelum deadline.`;
 
-export default {
+const app = {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+
+    // Halaman izin OAuth untuk konektor MCP (Claude).
+    if (url.pathname === "/authorize") return handleAuthorize(req, env);
 
     if (url.pathname.startsWith("/api/")) return handleApi(req, env, url);
 
@@ -115,6 +121,35 @@ export default {
     else if (event.cron === "0 0 * * *") await sendBriefing(env, "morning");
     else if (event.cron === "0 14 * * *") await sendBriefing(env, "evening");
   },
+} satisfies ExportedHandler<Env, TgUpdate>;
+
+// OAuthProvider membungkus fetch: /mcp butuh token OAuth yang disetujui pemilik; /.well-known/*, /oauth/token,
+// dan /oauth/register dilayani library; sisanya (website, API, webhook Telegram) diteruskan ke `app`.
+let provider: OAuthProvider<Env> | undefined;
+function oauthProvider(env: Env): OAuthProvider<Env> {
+  provider ??= new OAuthProvider<Env>({
+    apiRoute: "/mcp",
+    apiHandler: mcpHandler,
+    defaultHandler: { fetch: app.fetch },
+    authorizeEndpoint: "/authorize",
+    tokenEndpoint: "/oauth/token",
+    clientRegistrationEndpoint: "/oauth/register",
+    scopesSupported: ["mcp", "offline_access"],
+    requiredScopes: ["mcp"],
+    resourceMetadata: {
+      resource: `${env.PUBLIC_URL}/mcp`,
+      authorization_servers: [env.PUBLIC_URL],
+      resource_name: "Second Brain",
+    },
+    clientIdMetadataDocumentEnabled: true,
+  });
+  return provider;
+}
+
+export default {
+  fetch: (req, env, ctx) => oauthProvider(env).fetch(req, env, ctx),
+  queue: app.queue,
+  scheduled: app.scheduled,
 } satisfies ExportedHandler<Env, TgUpdate>;
 
 function isOwner(env: Env, chatId: number): boolean {

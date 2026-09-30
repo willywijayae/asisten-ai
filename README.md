@@ -40,6 +40,7 @@ Cron (tiap 5 menit / 07:00 / 21:00) ──▶ pengingat & briefing ──▶ Tel
 | File | Isi |
 |---|---|
 | `src/index.ts` | Route webhook, consumer queue, perintah, tombol approval, cron |
+| `src/mcp.ts`, `src/oauth.ts` | Server MCP untuk Claude & halaman izin OAuth |
 | `src/google.ts` | OAuth Google, Gmail (cari/baca/draf), Drive (cari/baca/simpan) |
 | `src/api.ts`, `src/auth.ts` | REST API website admin & login kode Telegram |
 | `web/` | Website admin (React + Vite + Tailwind), build ke `web/dist` |
@@ -78,6 +79,15 @@ Setelah deploy:
 1. Buka `https://asisten-ai.<subdomain>.workers.dev/setup?secret=<TELEGRAM_WEBHOOK_SECRET>` sekali untuk mendaftarkan webhook.
 2. Chat bot kamu di Telegram → bot membalas dengan chat ID kamu.
 3. Isi `OWNER_CHAT_ID` di `wrangler.jsonc` dengan angka itu, lalu `npm run deploy` lagi.
+
+## Konektor Claude (MCP)
+
+Second Brain juga tersedia sebagai server MCP di `https://asisten-ai.<subdomain>.workers.dev/mcp`, sehingga Claude (desktop, web, HP) bisa membaca & menambah tugas, catatan, dan profil. Gabungkan dengan konektor Gmail/Calendar bawaan Claude, mis. "cek email hari ini, masukkan yang perlu dikerjakan ke tugasku".
+
+1. claude.ai → **Settings → Connectors → Add custom connector**, isi URL di atas.
+2. Klik **Connect** → halaman izin Second Brain → masuk dengan kode Telegram → **Izinkan**.
+
+Tool: `get_overview`, `list_tasks`, `add_tasks`, `update_task`, `search_notes`, `add_note`, `update_note`, `get_profile`, `add_preference`. Setiap perubahan dari Claude dikabarkan ke Telegram sebagai bukti. Akses dilindungi OAuth 2.1 (`@cloudflare/workers-oauth-provider`, token di KV `OAUTH_KV`).
 
 ## Gmail & Google Drive
 

@@ -90,8 +90,10 @@ export async function logout(env: Env, req: Request): Promise<void> {
   if (token) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256(token)).run();
 }
 
+// Lax (bukan Strict) supaya sesi tetap dikenali saat Claude membuka /authorize dari situs lain.
+// Tetap aman dari CSRF: cookie Lax tidak ikut di POST lintas situs, dan API yang mengubah data wajib JSON.
 export function sessionCookie(token: string | null): string {
   return token
-    ? `sid=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_TTL_S}`
-    : "sid=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0";
+    ? `sid=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_S}`
+    : "sid=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
 }
