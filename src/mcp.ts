@@ -33,7 +33,7 @@ const taskShape = {
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 
 function newCtx(): RunContext {
-  return { source: "claude", proposed: [], created: [], updated: [], notes: [] };
+  return { source: "claude", proposed: [], created: [], updated: [], notes: [], attachments: [] };
 }
 
 /** Jalankan tool tulis, lalu kabarkan buktinya ke Telegram pemilik. */

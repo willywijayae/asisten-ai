@@ -5,6 +5,7 @@ import * as profile from "./profile";
 import { formatLocal, localDayRange, localToUtc, nowContext } from "./time";
 import { clip, logActivity, logTool, type AgentId } from "./activity";
 import * as memory from "./memory";
+import { runMarketing, SPECIALIST_IDS, SPECIALISTS } from "./marketing";
 
 const SYSTEM_PROMPT = `Kamu adalah asisten pribadi (chief of staff) milik satu orang: pemilik bot Telegram ini.
 Tugasmu: mencatat & mengawal komitmen, mengingatkan jadwal, merangkum informasi, dan menyimpan catatan (second brain).
@@ -29,6 +30,7 @@ Aturan kerja:
 - Kalau ada yang ambigu dan penting (misal jam tidak jelas), tetap catat dengan tebakan terbaik lalu sebutkan asumsinya, daripada banyak bertanya.
 - Saat menjawab dari catatan, memori, atau tugas, sebut sumbernya singkat (mis. "menurut catatan #12", "dari memori 3 Okt"). Bedakan yang tercatat dengan dugaanmu sendiri (tandai dengan "kemungkinan" / "dugaanku").
 - Pesan pemilik bisa disertai blok <konteks_otomatis>: hasil pencarian otomatis (berdasarkan makna) di memori jangka panjang, catatan, dan tugas. Pakai kalau relevan, abaikan kalau tidak. Memori punya tanggal; kalau ada yang bertentangan, yang terbaru biasanya yang berlaku. Untuk pencarian lain pakai search_memory / search_notes / list_tasks.
+- Permintaan MARKETING (copy/caption/hook iklan, ide atau kalender konten, analisis performa iklan, riset pasar/kompetitor/audiens, strategi marketing) serahkan ke tim marketing dengan delegate_marketing. Jangan tulis sendiri. Hasil lengkapnya otomatis dikirim ke pemilik, jadi balasanmu cukup satu kalimat pengantar.
 - Fakta dari obrolan diingat otomatis di latar belakang. Pakai remember_fact hanya kalau pemilik secara eksplisit minta sesuatu diingat ("ingat ya...", "catat di memori...") dan itu fakta, bukan catatan panjang (save_note) atau aturan cara kerjamu (remember_preference).
 - Kalau pemilik mengoreksi caramu bekerja atau menyatakan preferensi yang berlaku ke depan (gaya bahasa, sapaan, arti istilah, kebiasaan, hal yang tidak disukai), simpan dengan remember_preference lalu konfirmasi singkat. Jangan simpan hal sekali pakai; itu bukan preferensi. Kalau pemilik minta melupakan preferensi, pakai forget_preference.
 - WAJIB: setiap permintaan mencatat, menyimpan, mengubah, atau menyelesaikan sesuatu harus dilakukan dengan memanggil tool yang sesuai di giliran ini. Jangan pernah bilang "sudah dicatat/disimpan/diubah" sebelum menerima hasil tool yang sukses. Balasan lama di riwayat obrolan tidak berarti apa pun sudah tersimpan.`;
@@ -120,6 +122,19 @@ const TOOLS = [
     required: ["query"],
   }),
 ];
+
+const MARKETING_TOOL = fn(
+  "delegate_marketing",
+  `Serahkan permintaan marketing ke Manajer Marketing, yang menugaskan satu spesialis: ${SPECIALIST_IDS.map((id) => `${id} (${SPECIALISTS[id].role})`).join("; ")}. Hasilnya disimpan sebagai catatan & dikirim utuh ke pemilik.`,
+  {
+    type: "object",
+    properties: {
+      specialist: { type: "string", enum: [...SPECIALIST_IDS] },
+      request: { type: "string", description: "Permintaan lengkap pemilik, termasuk produk, tujuan, audiens, dan data yang ia berikan (salin angka apa adanya)." },
+    },
+    required: ["specialist", "request"],
+  },
+);
 
 const MEMORY_TOOLS = [
   fn("search_memory", "Cari di memori jangka panjang: fakta tentang pemilik, orang di sekitarnya, bisnis, rencana (berdasarkan makna).", {
@@ -241,6 +256,8 @@ export interface RunContext {
   created: number[];
   updated: number[];
   notes: number[];
+  /** Hasil kerja tim (mis. marketing) yang dikirim utuh ke pemilik setelah balasan. */
+  attachments?: string[];
 }
 
 export async function executeTool(env: Env, ctx: RunContext, name: string, input: any): Promise<string> {
@@ -383,6 +400,15 @@ export async function executeTool(env: Env, ctx: RunContext, name: string, input
       const res = await memory.addMemory(env, String(input.content), ctx.source, Array.isArray(input.entities) ? input.entities : []);
       return res.id ? `Fakta tersimpan di memori (${res.id}).` : `SUDAH ADA di memori: ${res.duplicateOf?.content}`;
     }
+    case "delegate_marketing": {
+      const res = await runMarketing(env, {
+        specialist: String(input.specialist ?? ""),
+        request: String(input.request ?? ""),
+      });
+      ctx.notes.push(res.noteId);
+      (ctx.attachments ??= []).push(`📣 ${res.name} (tim marketing)\n\n${res.text}`);
+      return `Selesai dikerjakan ${res.name}, tersimpan sebagai catatan #${res.noteId}, dan hasil lengkapnya SUDAH dikirim ke pemilik. Balas cukup satu kalimat pengantar; jangan ulangi isinya.`;
+    }
     case "remember_preference": {
       if (!input.content) throw new Error("content wajib diisi");
       const id = await profile.addPreference(env, String(input.content));
@@ -474,6 +500,33 @@ async function callWorkersAI(env: Env, messages: ChatMessage[], tools?: Tool[]):
   return msg;
 }
 
+/**
+ * Satu kali tanya-jawab tanpa tool, untuk pekerjaan tim (marketing, CEO). Claude lewat Puter dulu,
+ * jatuh ke Workers AI kalau Puter gagal/habis. `actor` = karakter Kantor 3D yang sedang bekerja.
+ */
+export async function complete(
+  env: Env,
+  opts: { system: string; user: string; tier: "fast" | "smart"; actor: AgentId },
+): Promise<{ text: string; model: string }> {
+  const messages: ChatMessage[] = [
+    { role: "system", content: opts.system },
+    { role: "user", content: opts.user },
+  ];
+  if (env.PUTER_AUTH_TOKEN) {
+    const model = opts.tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST;
+    try {
+      const msg = await callPuter(env, model, messages);
+      const text = cleanText(msg.content);
+      if (text) return { text, model };
+    } catch (err) {
+      console.error("complete: Puter gagal → Workers AI", err);
+      await logActivity(env, opts.actor, "step", err instanceof QuotaError ? "Jatah Puter habis, pakai otak cadangan" : "Puter tidak merespons, pakai otak cadangan");
+    }
+  }
+  const msg = await callWorkersAI(env, messages);
+  return { text: cleanText(msg.content) || "(tidak ada hasil)", model: env.FALLBACK_MODEL };
+}
+
 // --- Dua tingkat model: cepat & murah dulu, ahli hanya kalau perlu ---
 
 const ESCALATE_TOOL = fn(
@@ -489,7 +542,7 @@ const ESCALATE_TOOL = fn(
 const FAST_PROMPT = `
 
 Kamu adalah model CEPAT. Tangani sendiri pekerjaan rutin: mencatat/mengubah/menyelesaikan tugas, menyimpan & mencari catatan, menjawab pertanyaan singkat, merangkum hal pendek, mengusulkan tugas dari pesan yang diteruskan.
-Panggil tool escalate (sebagai tool PERTAMA, sebelum tool lain) kalau permintaan butuh pemikiran berat, misalnya: analisis atau strategi (bisnis, marketing, keuangan), riset/perbandingan dari banyak sumber, rencana bertahap, menulis dokumen/proposal/email penting yang panjang, merangkum dokumen/email panjang, atau pemilik meminta "pakai opus"/"pikir mendalam". Kalau ragu untuk hal rutin, kerjakan sendiri.`;
+Panggil tool escalate (sebagai tool PERTAMA, sebelum tool lain) kalau permintaan butuh pemikiran berat, misalnya: analisis atau strategi bisnis/keuangan (urusan marketing → delegate_marketing, bukan escalate), riset/perbandingan dari banyak sumber, rencana bertahap, menulis dokumen/proposal/email penting yang panjang, merangkum dokumen/email panjang, atau pemilik meminta "pakai opus"/"pikir mendalam". Kalau ragu untuk hal rutin, kerjakan sendiri.`;
 
 const CLAIMS_SAVED =
   /(sudah|udah|telah|berhasil)\s+(ku|aku\s+|di|ter)?(simpan|catat|tambah|ubah|update|tandai|hapus|selesaikan)|\bku(simpan|catat|tambahkan|ubah)\b|✅/i;
@@ -520,7 +573,7 @@ export async function runAgent(
   env: Env,
   parts: UserPart[],
   opts: RunOptions,
-): Promise<{ text: string; proposed: number[]; model: string; receipt: string }> {
+): Promise<{ text: string; proposed: number[]; model: string; receipt: string; attachments: string[] }> {
   const ctx: RunContext = { source: opts.source, proposed: [], created: [], updated: [], notes: [] };
 
   const userContent: Array<Record<string, unknown>> = [
@@ -565,7 +618,7 @@ export async function runAgent(
     { role: "user", content: userContent },
   ];
   const baseTools = opts.useTools
-    ? [...TOOLS, ...MEMORY_TOOLS, ...(googleOn ? GOOGLE_TOOLS : []), ...(interviewing ? [SAVE_PROFILE_TOOL] : [])]
+    ? [...TOOLS, MARKETING_TOOL, ...MEMORY_TOOLS, ...(googleOn ? GOOGLE_TOOLS : []), ...(interviewing ? [SAVE_PROFILE_TOOL] : [])]
     : undefined;
   // Model cepat boleh escalate (juga saat briefing tanpa tool, supaya tidak perlu).
   const toolsFor = () => (baseTools && tier === "fast" && usePuter ? [...baseTools, ESCALATE_TOOL] : baseTools);
@@ -582,6 +635,7 @@ export async function runAgent(
     "gmail_draft",
     "remember_preference",
     "remember_fact",
+    "delegate_marketing",
     "forget_preference",
     "save_profile",
   ]);
@@ -675,7 +729,13 @@ export async function runAgent(
   console.log(`runAgent source=${opts.source} model=${modelUsed}`);
   if (!text && ctx.proposed.length) text = "Ada usulan tugas di bawah, silakan cek 👇";
   await logActivity(env, actor, "done", text || "Siap.");
-  return { text: text || "Siap.", proposed: ctx.proposed, model: modelUsed, receipt: await receipt(env, ctx) };
+  return {
+    text: text || "Siap.",
+    proposed: ctx.proposed,
+    model: modelUsed,
+    receipt: await receipt(env, ctx),
+    attachments: ctx.attachments ?? [],
+  };
 }
 
 /** Bukti dari database tentang apa yang benar-benar tersimpan di giliran ini (bukan kata model). */

@@ -9,6 +9,7 @@ import * as profile from "./profile";
 import { localDayRange, localToUtc } from "./time";
 import { officeState } from "./activity";
 import * as memory from "./memory";
+import { weeklyReview } from "./ceo";
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(data, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -168,7 +169,10 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
            sum(status = 'pending') AS pending,
            sum(status = 'open' AND due_at IS NOT NULL AND due_at < ?1) AS overdue,
            sum(status = 'done' AND done_at >= ?2) AS doneToday,
-           (SELECT count(*) FROM notes) AS notes
+           (SELECT count(*) FROM notes) AS notes,
+           (SELECT count(*) FROM notes WHERE (', ' || coalesce(tags, '') || ',') LIKE '%, marketing,%') AS marketing,
+           (SELECT count(*) FROM notes WHERE (', ' || coalesce(tags, '') || ',') LIKE '%, marketing,%' AND created_at >= ?2) AS marketingToday,
+           (SELECT count(*) FROM memories) AS memories
          FROM tasks`,
       )
         .bind(now, todayStart)
@@ -183,7 +187,11 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
         overdue: counts?.overdue ?? 0,
         doneToday: counts?.doneToday ?? 0,
         notes: counts?.notes ?? 0,
+        marketing: counts?.marketing ?? 0,
+        marketingToday: counts?.marketingToday ?? 0,
+        memories: counts?.memories ?? 0,
       },
+      focus: await profile.getFocus(env),
       models: { haiku: env.MODEL_FAST, opus: env.MODEL_SMART, gemma: env.FALLBACK_MODEL },
       puterConnected: !!env.PUTER_AUTH_TOKEN,
       timezone: env.TIMEZONE_OFFSET,
@@ -303,7 +311,7 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
       input = profile.INTERVIEW_KICKOFF;
     }
     const history = await db.getHistory(env.DB);
-    const { text: reply, proposed, receipt } = await runAgent(env, [{ type: "text", text: input }], {
+    const { text: reply, proposed, receipt, attachments } = await runAgent(env, [{ type: "text", text: input }], {
       source: "web",
       useTools: true,
       history,
@@ -315,7 +323,7 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
       ctx.waitUntil(memory.extractMemories(env, { user: text, reply, source: "web" }));
     }
     const tasks = (await Promise.all(proposed.map((id) => db.getTask(env.DB, id)))).filter(Boolean);
-    return json({ reply, proposed: tasks, receipt });
+    return json({ reply: [reply, ...attachments].join("\n\n"), proposed: tasks, receipt });
   }
 
   // --- Sistem ---
@@ -341,6 +349,10 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
       puterConnected: !!env.PUTER_AUTH_TOKEN,
       timezone: env.TIMEZONE_OFFSET,
     });
+  }
+  if (path === "/review" && method === "POST") {
+    const { focus, noteId } = await weeklyReview(env);
+    return json({ focus, noteId });
   }
   if (path === "/briefing" && method === "POST") {
     const { kind } = await readJson(req);

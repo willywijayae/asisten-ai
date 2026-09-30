@@ -1,9 +1,20 @@
 import { Component, Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, Box, Moon, MousePointerClick, Sun, SunMoon, X } from "lucide-react";
 import { api } from "../lib/api";
-import { Card, PageHeader, SectionTitle, Spinner } from "../components/ui";
+import { Button, Card, PageHeader, SectionTitle, Spinner } from "../components/ui";
 import { useToast } from "../components/app-context";
-import { AGENT_BY_ID, MOOD_LABEL, ROSTER, statusOf, type AgentId, type Mood, type OfficeData, type Status } from "../office/roster";
+import {
+  AGENT_BY_ID,
+  DEPT_LABEL,
+  MOOD_LABEL,
+  ROSTER,
+  statusOf,
+  type AgentId,
+  type Dept,
+  type Mood,
+  type OfficeData,
+  type Status,
+} from "../office/roster";
 
 // three.js cukup besar → dimuat hanya saat halaman ini dibuka.
 const OfficeScene = lazy(() => import("../office/Scene"));
@@ -128,6 +139,18 @@ export function Office({ onChanged }: { onChanged: () => void }) {
   const feed = (data?.feed ?? []).filter((f) => !selected || f.agent === selected);
   const sel = selected ? AGENT_BY_ID[selected] : null;
   const selState = selected ? data?.agents.find((a) => a.id === selected) : undefined;
+  const [reviewing, setReviewing] = useState(false);
+  const askReview = async () => {
+    setReviewing(true);
+    try {
+      const r = await api<{ focus: string[] }>("/review", { body: {} });
+      toast.ok(r.focus.length ? "Review CEO terkirim ke Telegram" : "Review terkirim");
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setReviewing(false);
+    }
+  };
   const modelOf = (id: AgentId) => (id === "haiku" || id === "opus" || id === "gemma" ? data?.models[id] : null);
 
   return (
@@ -150,6 +173,7 @@ export function Office({ onChanged }: { onChanged: () => void }) {
               <Suspense fallback={<Spinner label="Memuat 3D…" />}>
                 <OfficeScene
                   counts={data.counts}
+                  focus={data.focus?.items ?? []}
                   statuses={statuses}
                   selected={selected}
                   onSelect={setSelected}
@@ -249,22 +273,69 @@ export function Office({ onChanged }: { onChanged: () => void }) {
                     <dd className="font-medium">{ago(selState.lastAt, skew)}</dd>
                   </div>
                 )}
+                {sel.reportsTo && (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Atasan</dt>
+                    <dd>
+                      <button className="font-medium text-accent hover:underline" onClick={() => setSelected(sel.reportsTo!)}>
+                        {AGENT_BY_ID[sel.reportsTo].name}
+                      </button>
+                    </dd>
+                  </div>
+                )}
               </dl>
+              {ROSTER.some((a) => a.reportsTo === sel.id) && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">Membawahi</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ROSTER.filter((a) => a.reportsTo === sel.id).map((a) => (
+                      <button
+                        key={a.id}
+                        onClick={() => setSelected(a.id)}
+                        className="flex items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 text-[11px] hover:bg-surface-2"
+                      >
+                        <span className="size-2 rounded-full" style={{ background: a.color }} />
+                        {a.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sel.id === "ceo" && (
+                <div className="mt-4 border-t border-line pt-3">
+                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">Fokus minggu ini</p>
+                  {data?.focus?.items.length ? (
+                    <ol className="list-decimal space-y-1 pl-4 text-sm">
+                      {data.focus.items.map((f) => (
+                        <li key={f}>{f}</li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-xs text-muted">Belum ditetapkan. Review otomatis tiap Minggu 20:00 WIB.</p>
+                  )}
+                  <Button size="sm" className="mt-3 w-full" loading={reviewing} onClick={askReview}>
+                    Minta review sekarang
+                  </Button>
+                </div>
+              )}
             </Card>
           ) : (
             <Card className="p-2">
-              <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted">Tim</p>
-              {ROSTER.map((a) => {
+              {(["pimpinan", "ops", "marketing"] as Dept[]).map((dept) => (
+                <div key={dept}>
+              <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted">{DEPT_LABEL[dept]}</p>
+              {ROSTER.filter((a) => a.dept === dept).map((a) => {
+                const manager = !a.reportsTo || a.reportsTo === "ceo";
                 const st = statuses[a.id];
                 return (
                   <button
                     key={a.id}
                     onClick={() => setSelected(a.id)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-surface-2"
+                    className={`flex w-full items-center gap-2.5 rounded-lg py-1.5 pr-2 text-left transition hover:bg-surface-2 ${manager ? "pl-2" : "pl-6"}`}
                   >
-                    <span className="size-6 shrink-0 rounded-md" style={{ background: a.color }} />
+                    <span className={`shrink-0 rounded-md ${manager ? "size-6" : "size-5"}`} style={{ background: a.color }} />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium">{a.name}</span>
+                      <span className={`block text-sm ${manager ? "font-semibold" : "font-medium"}`}>{a.name}</span>
                       <span className="block truncate text-[11px] text-muted">{a.role}</span>
                     </span>
                     <span className="flex items-center gap-1.5 text-[11px] text-muted">
@@ -274,6 +345,8 @@ export function Office({ onChanged }: { onChanged: () => void }) {
                   </button>
                 );
               })}
+                </div>
+              ))}
             </Card>
           )}
 

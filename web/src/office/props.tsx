@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { ROOM } from "./world";
+import { CEO_DOOR_Z, CEO_FRONT_Z, CEO_WALL_X, ROOM } from "./world";
 import type { AgentDef, Mood, OfficeData } from "./roster";
 
 // Perabot kantor bergaya low-poly. Teks (papan, label) digambar ke canvas 2D → tekstur,
@@ -29,6 +29,80 @@ export function Box({
       <boxGeometry args={size} />
       <meshLambertMaterial color={color} emissive={emissive ?? "#000"} />
     </mesh>
+  );
+}
+
+/** Dinding kaca ruang CEO (dengan pintu di sisi kiri). */
+function CeoGlass() {
+  const doorHalf = 0.5;
+  const frame = "#94a3b8";
+  const glass = (w: number, pos: [number, number, number], rotY = 0) => (
+    <group position={pos} rotation={[0, rotY, 0]}>
+      <mesh>
+        <boxGeometry args={[w, 2.2, 0.04]} />
+        <meshLambertMaterial color="#bae6fd" transparent opacity={0.28} depthWrite={false} />
+      </mesh>
+      <Box size={[w, 0.06, 0.08]} position={[0, 1.1, 0]} color={frame} shadow={false} />
+      <Box size={[w, 0.06, 0.08]} position={[0, -1.07, 0]} color={frame} shadow={false} />
+    </group>
+  );
+  const backLen = CEO_DOOR_Z - doorHalf - ROOM.minZ;
+  const frontLen = CEO_FRONT_Z - (CEO_DOOR_Z + doorHalf);
+  return (
+    <group>
+      {glass(backLen, [CEO_WALL_X, 1.1, ROOM.minZ + backLen / 2], Math.PI / 2)}
+      {glass(frontLen, [CEO_WALL_X, 1.1, CEO_DOOR_Z + doorHalf + frontLen / 2], Math.PI / 2)}
+      {glass(ROOM.maxX - CEO_WALL_X, [(CEO_WALL_X + ROOM.maxX) / 2, 1.1, CEO_FRONT_Z])}
+      <Box size={[0.08, 2.2, 0.08]} position={[CEO_WALL_X, 1.1, CEO_FRONT_Z]} color={frame} />
+      <Sign text="CEO" sub="Ruang pimpinan" position={[(CEO_WALL_X + ROOM.maxX) / 2, 2.45, CEO_FRONT_Z + 0.03]} width={1.3} color="#0f172a" />
+    </group>
+  );
+}
+
+/** Papan nama divisi di dinding belakang. */
+export function DeptSign({ x, text, color }: { x: number; text: string; color: string }) {
+  return <Sign text={text} position={[x, 2.72, ROOM.minZ + 0.03]} width={2.4} color={color} />;
+}
+
+/** Papan divisi marketing: jumlah hasil kerja tim & fokus minggu ini dari CEO. */
+export function MarketingBoard({ total, today, focus }: { total: number; today: number; focus: string[] }) {
+  const key = JSON.stringify([total, today, focus]);
+  const tex = useCanvasTexture(
+    1024,
+    460,
+    (ctx) => {
+      ctx.fillStyle = "#fdf2f8";
+      ctx.fillRect(0, 0, 1024, 460);
+      ctx.fillStyle = "#831843";
+      ctx.font = `800 44px ${FONT}`;
+      ctx.textBaseline = "top";
+      ctx.fillText("PAPAN MARKETING", 36, 26);
+      ctx.fillStyle = "#6b7280";
+      ctx.font = `500 26px ${FONT}`;
+      ctx.fillText(`${total} hasil kerja tersimpan · ${today} hari ini`, 36, 80);
+      ctx.fillStyle = "#111827";
+      ctx.font = `700 28px ${FONT}`;
+      ctx.fillText("Fokus minggu ini (CEO):", 36, 140);
+      ctx.font = `500 26px ${FONT}`;
+      const items = focus.length ? focus : ["Belum ada — tunggu review CEO hari Minggu"];
+      items.slice(0, 4).forEach((f, i) => {
+        ctx.fillStyle = ["#fbcfe8", "#fde68a", "#bfdbfe", "#bbf7d0"][i];
+        ctx.fillRect(36, 186 + i * 66, 952, 54);
+        ctx.fillStyle = "#1f2937";
+        const t = f.length > 62 ? f.slice(0, 61) + "…" : f;
+        ctx.fillText(`${i + 1}. ${t}`, 52, 200 + i * 66, 920);
+      });
+    },
+    key,
+  );
+  return (
+    <group position={[14.25, 1.65, ROOM.minZ + 0.05]}>
+      <Box size={[4.4, 2.1, 0.08]} position={[0, 0, 0]} color="#9d174d" shadow={false} />
+      <mesh position={[0, 0, 0.045]}>
+        <planeGeometry args={[4.2, 1.9]} />
+        <meshBasicMaterial map={tex} toneMapped={false} />
+      </mesh>
+    </group>
   );
 }
 
@@ -135,9 +209,13 @@ function woodTexture() {
 }
 
 export function Room({ night }: { night: boolean }) {
-  const floor = useMemo(woodTexture, []);
   const w = ROOM.maxX - ROOM.minX;
   const d = ROOM.maxZ - ROOM.minZ;
+  const floor = useMemo(() => {
+    const t = woodTexture();
+    t.repeat.set(w / 4.6, d / 4.2);
+    return t;
+  }, [w, d]);
   const cx = (ROOM.maxX + ROOM.minX) / 2;
   const cz = (ROOM.maxZ + ROOM.minZ) / 2;
   const wall = "#efe9df";
@@ -159,6 +237,19 @@ export function Room({ night }: { night: boolean }) {
 
       <Window x={-4.1} width={1.8} night={night} />
       <Window x={4.6} width={2.2} night={night} />
+      <Window x={10.9} width={1.6} night={night} />
+      <Window x={19} width={2} night={night} />
+
+      {/* Zona divisi marketing & ruang CEO */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[13.7, 0.008, 1.2]} receiveShadow>
+        <planeGeometry args={[7.4, 8.6]} />
+        <meshLambertMaterial color="#e8d5d9" transparent opacity={0.55} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(CEO_WALL_X + ROOM.maxX) / 2, 0.009, (ROOM.minZ + CEO_FRONT_Z) / 2]} receiveShadow>
+        <planeGeometry args={[ROOM.maxX - CEO_WALL_X, CEO_FRONT_Z - ROOM.minZ]} />
+        <meshLambertMaterial color="#374151" />
+      </mesh>
+      <CeoGlass />
 
       {/* Karpet area santai */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[6.4, 0.01, 5.2]} receiveShadow>
@@ -309,6 +400,67 @@ function DeskProp({ def }: { def: AgentDef }) {
           <Box size={[0.32, 0.03, 0.24]} position={[-0.55, 0.765, 0.05]} color="#2563eb" />
           <Box size={[0.3, 0.012, 0.22]} position={[-0.55, 0.785, 0.05]} color="#f8fafc" />
           <Mug x={0.58} color="#3b82f6" />
+        </group>
+      );
+    case "ceo": // piala & bola dunia
+      return (
+        <group>
+          <mesh position={[-0.55, 0.86, 0.08]} castShadow>
+            <cylinderGeometry args={[0.07, 0.04, 0.16, 12]} />
+            <meshLambertMaterial color="#eab308" emissive="#5c4400" />
+          </mesh>
+          <Box size={[0.14, 0.04, 0.14]} position={[-0.55, 0.76, 0.08]} color="#1f2937" />
+          <mesh position={[0.55, 0.9, 0.05]} castShadow>
+            <sphereGeometry args={[0.1, 16, 12]} />
+            <meshLambertMaterial color="#38bdf8" />
+          </mesh>
+          <Box size={[0.04, 0.06, 0.04]} position={[0.55, 0.77, 0.05]} color="#78350f" />
+        </group>
+      );
+    case "manajer_ops":
+    case "manajer_marketing": // papan klip
+      return (
+        <group>
+          <Box size={[0.24, 0.015, 0.32]} position={[-0.55, 0.76, 0.02]} rotation={[0, 0.25, 0]} color="#a16207" />
+          <Box size={[0.2, 0.012, 0.26]} position={[-0.55, 0.772, 0.02]} rotation={[0, 0.25, 0]} color="#f8fafc" />
+          <Mug x={0.58} color={def.color} />
+        </group>
+      );
+    case "copywriter": // buku catatan & pena
+      return (
+        <group>
+          <Box size={[0.3, 0.02, 0.22]} position={[-0.52, 0.765, 0.04]} color="#fef3c7" />
+          <Box size={[0.02, 0.02, 0.2]} position={[-0.35, 0.78, 0.04]} rotation={[0, 0.5, 0]} color="#111827" />
+          <Mug x={0.58} color={def.color} />
+        </group>
+      );
+    case "analis": // grafik batang
+      return (
+        <group>
+          {[0.08, 0.16, 0.12, 0.22].map((h, i) => (
+            <Box key={i} size={[0.05, h, 0.05]} position={[-0.66 + i * 0.08, 0.75 + h / 2, 0.05]} color={["#a78bfa", "#8b5cf6", "#7c3aed", "#22c55e"][i]} />
+          ))}
+          <Mug x={0.58} color={def.color} />
+        </group>
+      );
+    case "konten": // HP di tripod + ring light
+      return (
+        <group position={[-0.55, 0, 0.05]}>
+          <Box size={[0.02, 0.25, 0.02]} position={[0, 0.87, 0]} color="#374151" />
+          <mesh position={[0, 1.05, 0]}>
+            <torusGeometry args={[0.1, 0.018, 8, 24]} />
+            <meshBasicMaterial color="#fef9c3" toneMapped={false} />
+          </mesh>
+          <Box size={[0.06, 0.11, 0.01]} position={[0, 1.05, 0.01]} color="#111827" />
+        </group>
+      );
+    case "riset": // tumpukan buku
+      return (
+        <group>
+          {["#0e7490", "#f59e0b", "#1e293b"].map((c, i) => (
+            <Box key={c} size={[0.28 - i * 0.02, 0.05, 0.2]} position={[-0.55, 0.775 + i * 0.05, 0.05]} rotation={[0, i * 0.15, 0]} color={c} />
+          ))}
+          <Mug x={0.58} color={def.color} />
         </group>
       );
     case "claude": // laptop tamu
@@ -493,7 +645,7 @@ export function ServerRacks({ active }: { active: boolean }) {
 }
 
 export function Pantry() {
-  const x = ROOM.maxX - 0.8;
+  const x = 8.7;
   return (
     <group>
       <Box size={[0.7, 0.92, 2.0]} position={[x, 0.46, 2.7]} color="#e7e5e4" />

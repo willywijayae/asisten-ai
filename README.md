@@ -26,6 +26,12 @@ Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Teleg
 - **Profil & Memori** — profil kamu (hasil wawancara `/profil` atau ditulis sendiri) dan daftar preferensi permanen; keduanya ikut dibaca di setiap percakapan.
 - **Sistem** — status bot/webhook/model, kirim briefing manual, reset riwayat.
 
+### Struktur tim AI
+
+- **CEO**: review mingguan tiap Minggu 20:00 WIB (atau `/review` / tombol di Kantor 3D). Membaca data tugas, memori, hasil marketing, dan laporan operasional, memberi arahan ke kedua manajer, lalu menetapkan **fokus minggu ini** yang ikut dibaca semua agen (`src/ceo.ts`).
+- **Manajer Operasional** membawahi Haiku, Opus, Whisper, Gemma, Pengingat, Briefing, dan Claude. Memeriksa kesehatan tim tanpa AI (kendala, jatah Puter, beban kerja), dimasukkan ke briefing, dan di Kantor 3D menghampiri agen yang bermasalah (`src/ops.ts`).
+- **Manajer Marketing** menerima permintaan marketing dari Haiku (tool `delegate_marketing`) dan menugaskan **Copywriter**, **Perencana Konten**, **Analis Iklan**, atau **Riset**. Hasilnya dikirim utuh ke pemilik dan disimpan sebagai catatan bertag `marketing` (`src/marketing.ts`).
+
 ### Memori jangka panjang (ala [mem0](https://github.com/mem0ai/mem0), gratis)
 
 - Setelah tiap obrolan (Telegram & Chat AI), Gemma di Workers AI mengambil **fakta tahan lama** (tim, klien, rencana, angka) dan menyimpannya ke tabel `memories`. Fakta hanya ditambah, tidak pernah ditimpa; yang mirip ≥ 0,9 dengan fakta lama dilewati.

@@ -3,10 +3,26 @@ import type { Env } from "./env";
 // Jejak kerja para agen, dibaca Kantor 3D di website admin. Mencatat aktivitas tidak boleh
 // pernah menggagalkan pekerjaan utamanya, jadi semua error di sini hanya di-log.
 
-export const AGENTS = ["haiku", "opus", "gemma", "whisper", "pengingat", "briefing", "claude"] as const;
+export const AGENTS = [
+  "ceo",
+  "manajer_ops",
+  "haiku",
+  "opus",
+  "gemma",
+  "whisper",
+  "pengingat",
+  "briefing",
+  "claude",
+  "manajer_marketing",
+  "copywriter",
+  "konten",
+  "analis",
+  "riset",
+] as const;
 export type AgentId = (typeof AGENTS)[number];
 export type ActivityKind = "start" | "step" | "done" | "error";
-export type Spot = "board" | "cabinet" | "mail" | "profile";
+/** Tempat yang didatangi di kantor; "visit:<agen>" = menghampiri meja agen lain. */
+export type Spot = "board" | "cabinet" | "mail" | "profile" | "mboard" | `visit:${string}`;
 
 export interface Activity {
   id: number;
@@ -55,6 +71,7 @@ export const TOOL_ACTIVITY: Record<string, { label: string; spot?: Spot }> = {
   forget_preference: { label: "Menghapus preferensi", spot: "profile" },
   save_profile: { label: "Memperbarui profil", spot: "profile" },
   get_profile: { label: "Membaca profil pemilik", spot: "profile" },
+  delegate_marketing: { label: "Menyerahkan ke tim marketing", spot: "visit:manajer_marketing" },
   search_memory: { label: "Mencari di memori jangka panjang", spot: "cabinet" },
   remember_fact: { label: "Mengingat fakta baru", spot: "cabinet" },
   gmail_search: { label: "Membuka Gmail", spot: "mail" },

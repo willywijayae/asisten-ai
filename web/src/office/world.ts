@@ -1,12 +1,18 @@
-import { ROSTER, type AgentId, type Spot } from "./roster";
+import { AGENT_BY_ID, ROSTER, type AgentId, type Spot } from "./roster";
 
 // Denah kantor (satuan dunia ≈ meter). x ke kanan, z ke arah kamera.
+// Kiri (x < 9.5): Divisi Operasional · tengah: pantry & sofa bersama · kanan: Divisi Marketing,
+// dengan ruang CEO berdinding kaca di pojok belakang kanan.
 // Semua perjalanan lewat lorong tengah (z = 0) lalu masuk lewat titik akses tiap tempat,
 // jadi karakter tidak menembus meja tanpa perlu pathfinding.
 
 export type Vec2 = [number, number];
-export const ROOM = { minX: -9, maxX: 9.5, minZ: -6, maxZ: 6.5 };
+export const ROOM = { minX: -9, maxX: 20.5, minZ: -6, maxZ: 6.5 };
 export const AISLE_Z = 0;
+/** Ruang CEO: dinding kaca di x = CEO_WALL_X (pintu di sekitar z = CEO_DOOR_Z) dan z = CEO_FRONT_Z. */
+export const CEO_WALL_X = 17.4;
+export const CEO_FRONT_Z = -2.9;
+export const CEO_DOOR_Z = -4.95;
 
 export type IdleSpot = "coffee" | "sofa" | "window" | "plant";
 export type Place = `desk:${AgentId}` | Spot | IdleSpot;
@@ -21,20 +27,29 @@ export interface Location {
 
 const agentIndex = (id: AgentId) => ROSTER.findIndex((a) => a.id === id);
 
+/** Kolom lorong kosong di kiri sebuah meja. */
+const gapOf = (dx: number) => dx - 1.75;
+
 export function locate(place: Place, who: AgentId): Location {
   const i = agentIndex(who);
   if (place.startsWith("desk:")) {
-    const def = ROSTER.find((a) => a.id === place.slice(5))!;
-    const [dx, dz] = def.desk;
+    const [dx, dz] = AGENT_BY_ID[place.slice(5) as AgentId].desk;
     const seatZ = dz - 0.75;
-    const gapX = dx - 1.75;
-    return { access: [[gapX, AISLE_Z], [gapX, seatZ], [dx, seatZ]], facing: 0, pose: "sit" };
+    return { access: [[gapOf(dx), AISLE_Z], [gapOf(dx), seatZ], [dx, seatZ]], facing: 0, pose: "sit" };
+  }
+  if (place.startsWith("visit:")) {
+    // Berdiri di samping kiri kursi agen yang dihampiri, menghadap ke arahnya.
+    const [dx, dz] = AGENT_BY_ID[place.slice(6) as AgentId].desk;
+    const seatZ = dz - 0.75;
+    return { access: [[gapOf(dx), AISLE_Z], [gapOf(dx), seatZ], [dx - 0.8, seatZ]], facing: Math.PI / 2, pose: "stand" };
   }
   // Tempat bersama: tiap agen punya posisi sendiri supaya tidak bertumpuk.
-  const off = (i - 3) * 0.42;
-  switch (place as Spot | IdleSpot) {
+  const off = ((i % 7) - 3) * 0.42;
+  switch (place as Exclude<Spot, `visit:${string}`> | IdleSpot) {
     case "board":
       return { access: [[1.75, AISLE_Z], [1.75, -4.45], [off, -4.45]], facing: Math.PI, pose: "stand" };
+    case "mboard":
+      return { access: [[14.25, AISLE_Z], [14.25, -4.45], [14.25 + off * 0.8, -4.45]], facing: Math.PI, pose: "stand" };
     case "profile":
       return { access: [[-5.25, AISLE_Z], [-5.25, -4.45], [-6.6 + off * 0.35, -4.45]], facing: Math.PI, pose: "stand" };
     case "cabinet":

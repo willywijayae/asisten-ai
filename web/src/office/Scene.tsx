@@ -3,8 +3,8 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { ROSTER, type AgentDef, type AgentId, type OfficeData, type Status } from "./roster";
-import { IDLE_SPOTS, locate, route, type Place, type Vec2 } from "./world";
-import { Cabinets, Desk, MailWall, Pantry, Plant, ProfileShelf, Room, ServerRacks, Sofa, TaskBoard, WallClock } from "./props";
+import { IDLE_SPOTS, locate, route, ROOM, type Place, type Vec2 } from "./world";
+import { Cabinets, DeptSign, Desk, MailWall, MarketingBoard, Pantry, Plant, ProfileShelf, Room, ServerRacks, Sofa, TaskBoard, WallClock } from "./props";
 
 // Kantor 3D: tiap agen berjalan ke meja/papan/arsip sesuai aktivitas aslinya di server.
 
@@ -21,6 +21,7 @@ interface Runtime {
 
 export interface SceneProps {
   counts: OfficeData["counts"];
+  focus: string[];
   statuses: Record<AgentId, Status>;
   selected: AgentId | null;
   onSelect: (id: AgentId | null) => void;
@@ -30,7 +31,7 @@ export interface SceneProps {
   bubbles?: AgentId[];
 }
 
-export default function OfficeScene({ counts, statuses, selected, onSelect, night, tzOffsetMin, bubbles }: SceneProps) {
+export default function OfficeScene({ counts, focus, statuses, selected, onSelect, night, tzOffsetMin, bubbles }: SceneProps) {
   const statusRef = useRef(statuses);
   statusRef.current = statuses;
 
@@ -61,7 +62,7 @@ export default function OfficeScene({ counts, statuses, selected, onSelect, nigh
       orthographic
       shadows
       dpr={[1, 1.75]}
-      camera={{ position: [15, 13, 15], zoom: 40, near: 0.1, far: 200 }}
+      camera={{ position: [CENTER[0] + 15, 13, CENTER[2] + 15], zoom: 30, near: 0.1, far: 200 }}
       onPointerMissed={() => onSelect(null)}
       style={{ touchAction: "none" }}
     >
@@ -87,19 +88,22 @@ export default function OfficeScene({ counts, statuses, selected, onSelect, nigh
         ))}
       <OrbitControls
         makeDefault
-        target={[0.25, 0.4, 0.25]}
+        target={CENTER}
         enableDamping
         dampingFactor={0.08}
         minAzimuthAngle={0.08}
         maxAzimuthAngle={Math.PI / 2 - 0.08}
         minPolarAngle={0.45}
         maxPolarAngle={1.2}
-        minZoom={16}
+        minZoom={8}
         maxZoom={120}
       />
 
       <Room night={night} />
       <TaskBoard counts={counts} />
+      <MarketingBoard total={counts.marketing} today={counts.marketingToday} focus={focus} />
+      <DeptSign x={-2.2} text="Divisi Operasional" color="#0f766e" />
+      <DeptSign x={11.3} text="Divisi Marketing" color="#be185d" />
       <Cabinets notes={counts.notes} />
       <MailWall />
       <ProfileShelf />
@@ -111,6 +115,9 @@ export default function OfficeScene({ counts, statuses, selected, onSelect, nigh
       <Plant position={[-8.4, 0, -5.3]} scale={0.9} />
       <Plant position={[8.8, 0, 5.9]} scale={1.1} />
       <Plant position={[2.6, 0, -5.4]} scale={0.8} />
+      <Plant position={[10.1, 0, 5.9]} />
+      <Plant position={[20, 0, -2.5]} scale={0.8} />
+      <Plant position={[17, 0, -5.5]} scale={0.7} />
 
       {ROSTER.map((a) => (
         <Desk key={a.id} def={a} mood={statuses[a.id]?.mood ?? "idle"} />
@@ -208,11 +215,17 @@ function AgentLabel({
   );
 }
 
-/** Zoom kamera menyesuaikan lebar layar (HP vs desktop). */
+const CENTER: [number, number, number] = [(ROOM.minX + ROOM.maxX) / 2, 0.4, (ROOM.minZ + ROOM.maxZ) / 2];
+/** Lebar & tinggi denah saat dilihat dari sudut isometrik (satuan dunia). */
+const SPAN_W = (ROOM.maxX - ROOM.minX + ROOM.maxZ - ROOM.minZ) * 0.72;
+const SPAN_H = SPAN_W * 0.62;
+
+/** Zoom kamera menyesuaikan layar: seluruh kantor muat di desktop; di HP boleh terpotong (bisa digeser). */
 function FitZoom() {
   const { size, camera } = useThree();
   useEffect(() => {
-    camera.zoom = THREE.MathUtils.clamp(Math.min(size.width / 19, size.height / 12.5), 14, 80);
+    const fit = Math.min(size.width / SPAN_W, size.height / SPAN_H);
+    camera.zoom = THREE.MathUtils.clamp(size.width < 640 ? fit * 1.5 : fit, 10, 80);
     camera.updateProjectionMatrix();
   }, [size.width, size.height, camera]);
   return null;
@@ -243,7 +256,13 @@ function Director({
 
       if (!r.path.length) {
         let goal: Place = desk;
-        if (s?.mood === "visiting" && s.spot) goal = s.spot;
+        // Manajer operasional menghampiri anak buah yang sedang ada kendala.
+        const troubled =
+          a.id === "manajer_ops" && s?.mood === "idle"
+            ? ROSTER.find((x) => x.dept === "ops" && x.id !== a.id && statusRef.current?.[x.id]?.mood === "error")
+            : undefined;
+        if (s?.mood === "visiting" && s.spot) goal = s.spot as Place;
+        else if (troubled) goal = `visit:${troubled.id}`;
         else if (s?.mood === "idle") {
           if (r.place === desk) {
             if (t > r.nextWanderAt) {
@@ -447,6 +466,14 @@ function Avatar({
             <Part size={[0.07, 0.32, 0.02]} position={[0, 0.76, 0.135]} color={look.extraColor ?? "#2563eb"} />
           </>
         )}
+        {look.extra === "suit" && (
+          <>
+            <Part size={[0.14, 0.44, 0.02]} position={[0, 0.74, 0.13]} color="#f8fafc" />
+            <Part size={[0.06, 0.34, 0.02]} position={[0, 0.76, 0.14]} color={look.extraColor ?? "#b91c1c"} />
+            <Part size={[0.1, 0.46, 0.025]} position={[-0.1, 0.72, 0.135]} color={look.top} />
+            <Part size={[0.1, 0.46, 0.025]} position={[0.1, 0.72, 0.135]} color={look.top} />
+          </>
+        )}
         {look.extra === "scarf" && <Part size={[0.47, 0.09, 0.3]} position={[0, 0.96, 0]} color={look.extraColor ?? "#fde68a"} />}
         {/* lengan (pivot di bahu) */}
         {[
@@ -504,6 +531,14 @@ function Hair({ look }: { look: AgentDef["look"] }) {
     parts.push(<Part key="h2" size={[0.06, 0.13, 0.12]} position={[-0.2, 0.22, 0]} color="#0f172a" />);
     parts.push(<Part key="h3" size={[0.06, 0.13, 0.12]} position={[0.2, 0.22, 0]} color="#0f172a" />);
     parts.push(<Part key="h4" size={[0.03, 0.03, 0.14]} position={[0.2, 0.13, 0.1]} color="#0f172a" />);
+  }
+  if (look.extra === "beret") {
+    parts.push(
+      <mesh key="b1" position={[0.03, 0.46, 0]} rotation={[0, 0, -0.18]} castShadow>
+        <cylinderGeometry args={[0.2, 0.2, 0.06, 16]} />
+        <meshLambertMaterial color={x} />
+      </mesh>,
+    );
   }
   if (look.extra === "cap") {
     parts.push(<Part key="c1" size={[0.4, 0.1, 0.36]} position={[0, 0.44, 0]} color={x} />);

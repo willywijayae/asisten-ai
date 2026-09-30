@@ -71,9 +71,32 @@ export async function deletePreference(env: Env, id: number): Promise<boolean> {
 }
 
 /** Bagian system prompt tentang pemilik: profil + preferensi. */
+// --- Fokus minggu ini (ditetapkan CEO lewat review mingguan) ---
+
+export const FOCUS_KEY = "weekly_focus";
+const FOCUS_TTL_MS = 8 * 24 * 3600_000;
+
+export interface WeeklyFocus {
+  items: string[];
+  at: string;
+  noteId?: number;
+}
+
+export async function getFocus(env: Env): Promise<WeeklyFocus | null> {
+  const row = await getSetting(env, FOCUS_KEY);
+  if (!row?.value) return null;
+  try {
+    const f = JSON.parse(row.value) as WeeklyFocus;
+    return Date.now() - Date.parse(f.at) < FOCUS_TTL_MS && f.items.length ? f : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function ownerContext(env: Env): Promise<string> {
-  const [{ profile }, prefs] = await Promise.all([getProfile(env), listPreferences(env)]);
+  const [{ profile }, prefs, focus] = await Promise.all([getProfile(env), listPreferences(env), getFocus(env)]);
   let out = "";
+  if (focus) out += `\n\nFOKUS MINGGU INI (arahan CEO; prioritaskan saat menyarankan atau menyusun sesuatu):\n${focus.items.map((f) => `- ${f}`).join("\n")}`;
   if (profile) out += `\n\nPROFIL PEMILIK (pakai untuk menyesuaikan jawaban, jangan diulang-ulang):\n${profile}`;
   if (prefs.length) {
     out += `\n\nPREFERENSI PEMILIK (wajib diikuti; id dalam kurung untuk forget_preference):\n${prefs

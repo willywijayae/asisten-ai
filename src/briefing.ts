@@ -5,6 +5,7 @@ import { Telegram } from "./telegram";
 import { formatLocal, localDayRange } from "./time";
 import * as google from "./google";
 import { logActivity } from "./activity";
+import { opsReport } from "./ops";
 
 export async function sendBriefing(env: Env, kind: "morning" | "evening"): Promise<void> {
   const tz = env.TIMEZONE_OFFSET;
@@ -53,6 +54,14 @@ export async function sendBriefing(env: Env, kind: "morning" | "evening"): Promi
       console.error("Gagal ambil email untuk briefing", err);
       await logActivity(env, "briefing", "error", "Gagal membaca Gmail untuk briefing", "mail");
     }
+  }
+
+  // Laporan Manajer Operasional tentang kesehatan tim AI.
+  try {
+    data += `\n\nLAPORAN MANAJER OPERASIONAL (tim AI, 24 jam):\n${await opsReport(env)}`;
+    instruction += " Tutup dengan 1 kalimat status tim AI dari laporan manajer operasional HANYA kalau ada kendala.";
+  } catch (err) {
+    console.error("Laporan operasional gagal", err);
   }
 
   const { text } = await runAgent(env, [{ type: "text", text: `${instruction}\n\n${data}` }], {

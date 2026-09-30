@@ -7,6 +7,7 @@ import { formatLocal } from "./time";
 import { sendBriefing } from "./briefing";
 import { clip, logActivity, pruneActivity } from "./activity";
 import { extractMemories, reindexAll } from "./memory";
+import { weeklyReview } from "./ceo";
 import { handleApi } from "./api";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp";
@@ -21,10 +22,12 @@ Yang bisa kamu lakukan:
 - Kirim voice note → aku transkrip & catat poin pentingnya
 - "catat bahwa password wifi kantor ada di laci" → tersimpan di second brain
 - Tanya: "apa aja tugasku minggu ini?", "aku pernah catat apa soal Budi?"
+- Urusan marketing: "bikinin 5 hook video Wellous", "ide konten minggu depan" → dikerjakan tim marketing
 
 Perintah:
 /tugas — daftar tugas aktif
 /briefing — briefing sekarang
+/review — review mingguan dari CEO tim AI
 /profil — diwawancara supaya aku lebih kenal kamu
 /batal — batalkan wawancara profil
 /reset — lupakan riwayat obrolan
@@ -66,6 +69,7 @@ const app = {
         commands: [
           { command: "tugas", description: "Daftar tugas aktif" },
           { command: "briefing", description: "Briefing sekarang" },
+          { command: "review", description: "Review mingguan dari CEO tim AI" },
           { command: "profil", description: "Wawancara profil supaya asisten lebih kenal kamu" },
           { command: "batal", description: "Batalkan wawancara profil" },
           { command: "reset", description: "Lupakan riwayat obrolan" },
@@ -126,6 +130,7 @@ const app = {
       await sendBriefing(env, "morning");
     }
     else if (event.cron === "0 14 * * *") await sendBriefing(env, "evening");
+    else if (event.cron === "0 13 * * SUN") await weeklyReview(env);
   },
 } satisfies ExportedHandler<Env, TgUpdate>;
 
@@ -194,6 +199,11 @@ async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
     }
     if (cmd === "/tugas") return tg.send(m.chat.id, await taskOverview(env));
     if (cmd === "/briefing") return sendBriefing(env, "morning");
+    if (cmd === "/review") {
+      await tg.send(m.chat.id, "👔 CEO sedang menyusun review mingguan…");
+      await weeklyReview(env);
+      return;
+    }
     if (cmd === "/batal") {
       const active = await profile.interviewActive(env);
       await profile.stopInterview(env);
@@ -210,7 +220,7 @@ async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   }
 
   const history = await db.getHistory(env.DB);
-  const { text: reply, proposed, receipt } = await runAgent(env, content, {
+  const { text: reply, proposed, receipt, attachments } = await runAgent(env, content, {
     source,
     useTools: true,
     history,
@@ -219,6 +229,7 @@ async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   await db.appendHistory(env.DB, "user", historyText);
   await db.appendHistory(env.DB, "assistant", reply);
   await tg.send(m.chat.id, reply);
+  for (const a of attachments) await tg.send(m.chat.id, a);
   if (receipt) await tg.send(m.chat.id, receipt);
 
   for (const id of proposed) {
