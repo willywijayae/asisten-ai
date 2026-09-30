@@ -1,0 +1,298 @@
+import type { BetaContentBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
+import { Buffer } from "node:buffer";
+import type { Env } from "./env";
+import * as db from "./db";
+import { runAgent } from "./agent";
+import { Telegram, type TgCallbackQuery, type TgMessage, type TgUpdate } from "./telegram";
+import { formatLocal, localDayRange } from "./time";
+
+const HELP = `Halo! Aku asisten pribadimu 🤖
+
+Yang bisa kamu lakukan:
+- Chat biasa: "ingetin aku meeting sama Budi besok jam 10"
+- Teruskan (forward) pesan / screenshot chat WhatsApp → aku usulkan tugasnya, kamu tinggal approve
+- Kirim voice note → aku transkrip & catat poin pentingnya
+- "catat bahwa password wifi kantor ada di laci" → tersimpan di second brain
+- Tanya: "apa aja tugasku minggu ini?", "riset harga sewa kantor di BSD"
+
+Perintah:
+/tugas — daftar tugas aktif
+/briefing — briefing sekarang
+/reset — lupakan riwayat obrolan
+/id — lihat chat ID
+
+Otomatis: briefing pagi 07:00, rekap malam 21:00, dan pengingat sebelum deadline.`;
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const url = new URL(req.url);
+
+    if (req.method === "POST" && url.pathname === "/telegram") {
+      if (req.headers.get("x-telegram-bot-api-secret-token") !== env.TELEGRAM_WEBHOOK_SECRET) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const update = (await req.json()) as TgUpdate;
+      await env.JOBS.send(update);
+      return new Response("ok");
+    }
+
+    // Sekali jalan setelah deploy: daftarkan webhook & menu perintah ke Telegram.
+    if (url.pathname === "/setup") {
+      if (url.searchParams.get("secret") !== env.TELEGRAM_WEBHOOK_SECRET) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const tg = new Telegram(env.TELEGRAM_BOT_TOKEN);
+      const webhook = await tg.call("setWebhook", {
+        url: `${url.origin}/telegram`,
+        secret_token: env.TELEGRAM_WEBHOOK_SECRET,
+        allowed_updates: ["message", "callback_query"],
+        drop_pending_updates: true,
+      });
+      await tg.call("setMyCommands", {
+        commands: [
+          { command: "tugas", description: "Daftar tugas aktif" },
+          { command: "briefing", description: "Briefing sekarang" },
+          { command: "reset", description: "Lupakan riwayat obrolan" },
+          { command: "id", description: "Lihat chat ID" },
+        ],
+      });
+      return Response.json({ webhook, url: `${url.origin}/telegram` });
+    }
+
+    return new Response("asisten-ai jalan ✅");
+  },
+
+  async queue(batch: MessageBatch<TgUpdate>, env: Env): Promise<void> {
+    for (const msg of batch.messages) {
+      try {
+        if (await db.claimUpdate(env.DB, msg.body.update_id)) await handleUpdate(env, msg.body);
+      } catch (err) {
+        console.error("Gagal memproses update", err);
+        const chatId = msg.body.message?.chat.id ?? msg.body.callback_query?.message?.chat.id;
+        if (chatId && isOwner(env, chatId)) {
+          await new Telegram(env.TELEGRAM_BOT_TOKEN)
+            .send(chatId, `⚠️ Ada error: ${String(err).slice(0, 500)}`)
+            .catch(() => {});
+        }
+      }
+      msg.ack();
+    }
+  },
+
+  async scheduled(event: ScheduledController, env: Env): Promise<void> {
+    if (!env.OWNER_CHAT_ID) return;
+    if (event.cron === "*/5 * * * *") await sendReminders(env);
+    else if (event.cron === "0 0 * * *") await sendBriefing(env, "morning");
+    else if (event.cron === "0 14 * * *") await sendBriefing(env, "evening");
+  },
+} satisfies ExportedHandler<Env, TgUpdate>;
+
+function isOwner(env: Env, chatId: number): boolean {
+  return !!env.OWNER_CHAT_ID && String(chatId) === env.OWNER_CHAT_ID;
+}
+
+async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
+  const tg = new Telegram(env.TELEGRAM_BOT_TOKEN);
+
+  if (update.callback_query) {
+    const cq = update.callback_query;
+    if (!cq.message || !isOwner(env, cq.message.chat.id)) return tg.answerCallback(cq.id);
+    return handleCallback(env, tg, cq);
+  }
+
+  const m = update.message;
+  if (!m || m.chat.type !== "private") return;
+
+  if (!env.OWNER_CHAT_ID) {
+    await tg.send(
+      m.chat.id,
+      `Chat ID kamu: ${m.chat.id}\n\nIsi OWNER_CHAT_ID di wrangler.jsonc dengan angka ini lalu deploy ulang, supaya bot hanya melayani kamu.`,
+    );
+    return;
+  }
+  if (!isOwner(env, m.chat.id)) return; // bot pribadi: abaikan orang lain
+
+  const text = (m.text ?? "").trim();
+  if (text.startsWith("/")) {
+    const cmd = text.split(/[\s@]/)[0].toLowerCase();
+    if (cmd === "/start" || cmd === "/help") return tg.send(m.chat.id, HELP);
+    if (cmd === "/id") return tg.send(m.chat.id, `Chat ID: ${m.chat.id}`);
+    if (cmd === "/reset") {
+      await db.clearHistory(env.DB);
+      return tg.send(m.chat.id, "Riwayat obrolan dihapus. Tugas & catatan tetap aman.");
+    }
+    if (cmd === "/tugas") return tg.send(m.chat.id, await taskOverview(env));
+    if (cmd === "/briefing") return sendBriefing(env, "morning");
+  }
+
+  await tg.typing(m.chat.id);
+  const { content, historyText, source } = await buildUserContent(env, tg, m);
+  if (!content.length) return tg.send(m.chat.id, "Jenis pesan ini belum didukung. Coba kirim teks, foto, atau voice note.");
+
+  const history = await db.getHistory(env.DB);
+  const { text: reply, proposed } = await runAgent(env, content, {
+    source,
+    effort: "low",
+    useTools: true,
+    history,
+  });
+
+  await db.appendHistory(env.DB, "user", historyText);
+  await db.appendHistory(env.DB, "assistant", reply);
+  await tg.send(m.chat.id, reply);
+
+  for (const id of proposed) {
+    const t = await db.getTask(env.DB, id);
+    if (!t) continue;
+    await tg.send(m.chat.id, `📝 Usulan tugas:\n${db.formatTask(t, env.TIMEZONE_OFFSET)}`, [
+      [
+        { text: "✅ Simpan", callback_data: `ok:${id}` },
+        { text: "❌ Buang", callback_data: `no:${id}` },
+      ],
+    ]);
+  }
+}
+
+async function buildUserContent(
+  env: Env,
+  tg: Telegram,
+  m: TgMessage,
+): Promise<{ content: BetaContentBlockParam[]; historyText: string; source: string }> {
+  const content: BetaContentBlockParam[] = [];
+  let source = "chat";
+  const prefix: string[] = [];
+
+  if (m.forward_origin) {
+    source = "forward";
+    const o = m.forward_origin;
+    const from = o.sender_user?.first_name ?? o.sender_user_name ?? o.chat?.title ?? "seseorang";
+    prefix.push(`[Pesan DITERUSKAN dari ${from}]`);
+  }
+
+  const audio = m.voice ?? m.audio;
+  if (audio) {
+    source = "voice";
+    const buf = await tg.downloadFile(audio.file_id);
+    const transcript = await transcribe(env, buf);
+    prefix.push(`[Voice note ${audio.duration} detik, transkrip:]\n${transcript || "(tidak terdengar jelas)"}`);
+  }
+
+  if (m.photo?.length) {
+    source = source === "forward" ? "forward" : "photo";
+    const biggest = m.photo[m.photo.length - 1];
+    const buf = await tg.downloadFile(biggest.file_id);
+    content.push({
+      type: "image",
+      source: { type: "base64", media_type: "image/jpeg", data: Buffer.from(buf).toString("base64") },
+    });
+    prefix.push("[Foto/screenshot terlampir]");
+  }
+
+  const body = m.text ?? m.caption ?? "";
+  const full = [...prefix, body].filter(Boolean).join("\n");
+  if (full) content.push({ type: "text", text: full });
+  return { content, historyText: full || "[foto]", source };
+}
+
+async function transcribe(env: Env, audio: ArrayBuffer): Promise<string> {
+  const res = (await env.AI.run("@cf/openai/whisper-large-v3-turbo" as any, {
+    audio: Buffer.from(audio).toString("base64"),
+    language: "id",
+  } as any)) as { text?: string };
+  return (res.text ?? "").trim();
+}
+
+async function handleCallback(env: Env, tg: Telegram, cq: TgCallbackQuery): Promise<void> {
+  const [action, rawId] = (cq.data ?? "").split(":");
+  const id = Number(rawId);
+  const t = await db.getTask(env.DB, id);
+  const msg = cq.message!;
+  if (!t) return tg.answerCallback(cq.id, "Tugas tidak ditemukan");
+
+  const tz = env.TIMEZONE_OFFSET;
+  switch (action) {
+    case "ok":
+      await db.updateTask(env.DB, id, { status: "open" });
+      await tg.editText(msg.chat.id, msg.message_id, `✅ Disimpan: ${db.formatTask({ ...t, status: "open" }, tz)}`);
+      return tg.answerCallback(cq.id, "Disimpan");
+    case "no":
+      await db.updateTask(env.DB, id, { status: "cancelled" });
+      await tg.editText(msg.chat.id, msg.message_id, `🗑️ Dibuang: ${t.title}`);
+      return tg.answerCallback(cq.id, "Dibuang");
+    case "done":
+      await db.updateTask(env.DB, id, { status: "done" });
+      await tg.editText(msg.chat.id, msg.message_id, `✅ Selesai: ${t.title}`);
+      return tg.answerCallback(cq.id, "Mantap!");
+    case "snooze": {
+      const at = new Date(Date.now() + 60 * 60_000).toISOString();
+      await db.updateTask(env.DB, id, { remind_at: at });
+      await tg.editText(msg.chat.id, msg.message_id, `⏰ Ditunda, aku ingatkan lagi ${formatLocal(at, tz)}: ${t.title}`);
+      return tg.answerCallback(cq.id, "Ditunda 1 jam");
+    }
+    default:
+      return tg.answerCallback(cq.id);
+  }
+}
+
+async function sendReminders(env: Env): Promise<void> {
+  const tg = new Telegram(env.TELEGRAM_BOT_TOKEN);
+  for (const t of await db.dueReminders(env.DB, new Date())) {
+    await db.markReminded(env.DB, t.id);
+    await tg.send(env.OWNER_CHAT_ID, `⏰ Pengingat:\n${db.formatTask(t, env.TIMEZONE_OFFSET)}`, [
+      [
+        { text: "✅ Selesai", callback_data: `done:${t.id}` },
+        { text: "⏰ Tunda 1 jam", callback_data: `snooze:${t.id}` },
+      ],
+    ]);
+  }
+}
+
+async function taskOverview(env: Env): Promise<string> {
+  const tz = env.TIMEZONE_OFFSET;
+  const open = await db.listTasks(env.DB, { statuses: ["open"] });
+  const pending = await db.listTasks(env.DB, { statuses: ["pending"] });
+  const lines = [open.length ? `📋 Tugas aktif (${open.length}):` : "📋 Tidak ada tugas aktif. 🎉"];
+  lines.push(...open.map((t) => "- " + db.formatTask(t, tz)));
+  if (pending.length) {
+    lines.push("", `⏳ Menunggu approval (${pending.length}):`, ...pending.map((t) => "- " + db.formatTask(t, tz)));
+  }
+  return lines.join("\n");
+}
+
+async function sendBriefing(env: Env, kind: "morning" | "evening"): Promise<void> {
+  const tz = env.TIMEZONE_OFFSET;
+  const tg = new Telegram(env.TELEGRAM_BOT_TOKEN);
+  const now = new Date().toISOString();
+  const [todayStart, todayEnd] = localDayRange(tz, 0);
+  const [, weekEnd] = localDayRange(tz, 6);
+  const [tomorrowStart, tomorrowEnd] = localDayRange(tz, 1);
+  const fmt = (ts: db.Task[]) => (ts.length ? ts.map((t) => "- " + db.formatTask(t, tz)).join("\n") : "(tidak ada)");
+
+  const overdue = await db.listTasks(env.DB, { statuses: ["open"], overdueBefore: now });
+  const pending = await db.listTasks(env.DB, { statuses: ["pending"] });
+  const noDue = (await db.listTasks(env.DB, { statuses: ["open"] })).filter((t) => !t.due_at);
+
+  let data: string;
+  let instruction: string;
+  if (kind === "morning") {
+    const today = await db.listTasks(env.DB, { statuses: ["open"], dueFrom: now, dueTo: todayEnd });
+    const week = await db.listTasks(env.DB, { statuses: ["open"], dueFrom: todayEnd, dueTo: weekEnd });
+    data = `TERLEWAT:\n${fmt(overdue)}\n\nHARI INI:\n${fmt(today)}\n\n7 HARI KE DEPAN:\n${fmt(week)}\n\nTANPA DEADLINE:\n${fmt(noDue)}\n\nMENUNGGU APPROVAL:\n${fmt(pending)}`;
+    instruction =
+      "Buat BRIEFING PAGI untuk pemilik dari data di bawah. Susun: sapaan singkat, 3 prioritas utama hari ini (dan alasannya), yang terlewat & perlu segera ditangani, agenda hari ini berurutan jam, lalu heads-up untuk beberapa hari ke depan. Tandai kalau ada jadwal bentrok. Maksimal ~200 kata.";
+  } else {
+    const doneToday = await db.listTasks(env.DB, { statuses: ["done"], doneFrom: todayStart });
+    const tomorrow = await db.listTasks(env.DB, { statuses: ["open"], dueFrom: tomorrowStart, dueTo: tomorrowEnd });
+    data = `SELESAI HARI INI:\n${fmt(doneToday)}\n\nMASIH TERBUKA & TERLEWAT:\n${fmt(overdue)}\n\nBESOK:\n${fmt(tomorrow)}\n\nMENUNGGU APPROVAL:\n${fmt(pending)}`;
+    instruction =
+      "Buat REKAP MALAM untuk pemilik dari data di bawah: apresiasi yang sudah selesai, apa yang masih menggantung (sarankan dijadwal ulang kapan), dan persiapan untuk besok. Maksimal ~150 kata.";
+  }
+
+  const { text } = await runAgent(env, [{ type: "text", text: `${instruction}\n\n${data}` }], {
+    source: "briefing",
+    effort: "medium",
+    useTools: false,
+    history: [],
+  });
+  await tg.send(env.OWNER_CHAT_ID, (kind === "morning" ? "☀️ " : "🌙 ") + text);
+}

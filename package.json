@@ -1,0 +1,22 @@
+{
+  "name": "asisten-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "wrangler d1 migrations apply asisten-ai-db --remote",
+    "db:migrate:local": "wrangler d1 migrations apply asisten-ai-db --local"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.129.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260930.1",
+    "@types/node": "^26.6.3",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.144.0"
+  }
+}

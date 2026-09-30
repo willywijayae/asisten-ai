@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "asisten-ai",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "asisten-ai-db",
+      "database_id": "REPLACE_WITH_D1_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Update Telegram diantrekan dulu supaya webhook langsung balas 200,
+  // lalu diproses di consumer (boleh jalan sampai 15 menit).
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "asisten-ai-jobs" }],
+    "consumers": [{ "queue": "asisten-ai-jobs", "max_batch_size": 1, "max_retries": 0 }]
+  },
+
+  // Workers AI: transkrip voice note (Whisper).
+  "ai": { "binding": "AI" },
+
+  "triggers": {
+    "crons": [
+      "*/5 * * * *", // cek pengingat tiap 5 menit
+      "0 0 * * *",   // 07:00 WIB — briefing pagi
+      "0 14 * * *"   // 21:00 WIB — rekap malam
+    ]
+  },
+
+  "vars": {
+    "MODEL": "claude-opus-5-5",
+    "TIMEZONE_OFFSET": "+07:00",
+    "OWNER_CHAT_ID": ""
+  }
+  // Secrets (pakai `npx wrangler secret put <NAMA>`):
+  //   ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET
+}
