@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import type { Env } from "./env";
 import * as db from "./db";
-import { runAgent, type UserPart } from "./agent";
+import { puterPing, runAgent, type UserPart } from "./agent";
 import { Telegram, type TgCallbackQuery, type TgMessage, type TgUpdate } from "./telegram";
 import { formatLocal } from "./time";
 import { sendBriefing } from "./briefing";
@@ -82,6 +82,7 @@ export default {
         webhook: info,
         owner_set: !!env.OWNER_CHAT_ID,
         puter: !!env.PUTER_AUTH_TOKEN,
+        ...(url.searchParams.has("ping") ? { puterPing: await puterPing(env) } : {}),
       });
     }
 
@@ -97,7 +98,10 @@ export default {
         const chatId = msg.body.message?.chat.id ?? msg.body.callback_query?.message?.chat.id;
         if (chatId && isOwner(env, chatId)) {
           await new Telegram(env.TELEGRAM_BOT_TOKEN)
-            .send(chatId, `⚠️ Ada error: ${String(err).slice(0, 500)}`)
+            .send(
+              chatId,
+              `⚠️ Maaf, pesan terakhir gagal diproses (otak AI sedang bermasalah). Cek /tugas untuk melihat apa yang sudah tersimpan, lalu coba kirim lagi.\n\nDetail: ${String(err).slice(0, 300)}`,
+            )
             .catch(() => {});
         }
       }
@@ -165,7 +169,7 @@ async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   }
 
   const history = await db.getHistory(env.DB);
-  const { text: reply, proposed } = await runAgent(env, content, {
+  const { text: reply, proposed, receipt } = await runAgent(env, content, {
     source,
     useTools: true,
     history,
@@ -174,6 +178,7 @@ async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   await db.appendHistory(env.DB, "user", historyText);
   await db.appendHistory(env.DB, "assistant", reply);
   await tg.send(m.chat.id, reply);
+  if (receipt) await tg.send(m.chat.id, receipt);
 
   for (const id of proposed) {
     const t = await db.getTask(env.DB, id);

@@ -43,7 +43,7 @@
   "vars": {
     "MODEL_FAST": "claude-haiku-4-5",           // Claude via Puter: mencatat & tugas rutin
     "MODEL_SMART": "claude-opus-5-5",           // Claude via Puter: dipanggil kalau rumit
-    "FALLBACK_MODEL": "@cf/zai-org/glm-5.3-flash", // cadangan gratis (Workers AI)
+    "FALLBACK_MODEL": "@cf/google/gemma-4-26b-a4b-it", // cadangan gratis (Workers AI, paket Free)
     "TIMEZONE_OFFSET": "+07:00",
     "OWNER_CHAT_ID": "1001715052"
   }

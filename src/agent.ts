@@ -13,7 +13,11 @@ Gaya bicara:
 
 Aturan kerja:
 - Semua waktu dalam zona waktu pemilik. Tulis waktu untuk tool dalam format lokal "YYYY-MM-DD HH:mm". Tanggal relatif ("besok", "Jumat depan") hitung dari waktu sekarang yang diberikan di setiap pesan.
-- Kalau pemilik secara langsung minta dicatat/diingatkan ("ingetin aku...", "catat tugas..."), pakai add_task.
+- Kalau pemilik secara langsung minta dicatat/diingatkan ("ingetin aku...", "catat tugas..."), pakai add_task; untuk beberapa tugas sekaligus pakai add_tasks dalam SATU panggilan berisi semua tugas.
+- "Ingetin aku jam X" berarti remind = jam X (bukan satu jam sebelumnya). Untuk janji/meeting jam X tanpa permintaan khusus, biarkan remind kosong (default 60 menit sebelumnya).
+- Kalau sekarang antara jam 00:00 dan 04:00 dan pemilik bilang "besok", anggap maksudnya pagi/siang nanti (tanggal hari ini), karena pemilik belum tidur.
+- Setiap kali mencatat atau mengubah jadwal, sebut tanggalnya secara eksplisit (mis. "Kamis 1 Okt 09:00") supaya pemilik bisa mengoreksi.
+- Kalau tool menjawab "SUDAH ADA", jangan buat ulang; sampaikan bahwa tugas itu sudah ada.
 - Kalau isinya pesan yang DITERUSKAN, voice note, atau foto/screenshot chat, JANGAN langsung add_task. Ekstrak komitmen, janji, deadline, atau permintaan yang relevan untuk pemilik, lalu pakai propose_tasks supaya pemilik bisa approve dulu. Setelah itu rangkum isi pesannya singkat.
 - Kalau pemilik minta "catat bahwa...", "simpan info...", atau memberi fakta yang perlu diingat (nomor, alamat, preferensi, hasil meeting), pakai save_note.
 - Sebelum menjawab pertanyaan tentang hal yang pernah dicatat, cari dulu dengan search_notes / list_tasks. Jangan mengarang data pribadi.
@@ -55,6 +59,13 @@ const TOOLS = [
     type: "object",
     properties: TASK_PROPS,
     required: ["title"],
+  }),
+  fn("add_tasks", "Tambah BEBERAPA tugas sekaligus (mis. daftar bernomor dari pemilik). Selalu pakai ini untuk lebih dari satu tugas.", {
+    type: "object",
+    properties: {
+      tasks: { type: "array", items: { type: "object", properties: TASK_PROPS, required: ["title"] } },
+    },
+    required: ["tasks"],
   }),
   fn(
     "propose_tasks",
@@ -210,6 +221,10 @@ export interface RunContext {
   source: string;
   /** Id tugas pending yang dibuat selama run ini (butuh tombol approval). */
   proposed: number[];
+  /** Id tugas yang benar-benar dibuat / diubah, dan catatan yang disimpan — untuk bukti ke pemilik. */
+  created: number[];
+  updated: number[];
+  notes: number[];
 }
 
 async function executeTool(env: Env, ctx: RunContext, name: string, input: any): Promise<string> {
@@ -225,11 +240,31 @@ async function executeTool(env: Env, ctx: RunContext, name: string, input: any):
     remind_at: localToUtc(t.remind, tz),
   });
 
+  // Tambah satu tugas aktif; tugas aktif dengan judul sama tidak dibuat dobel.
+  const addOne = async (t: TaskInput): Promise<string> => {
+    if (!t?.title) throw new Error("title wajib diisi");
+    const existing = await env.DB.prepare(
+      "SELECT * FROM tasks WHERE status IN ('open', 'pending') AND lower(trim(title)) = lower(trim(?)) LIMIT 1",
+    )
+      .bind(t.title)
+      .first<db.Task>();
+    if (existing) {
+      return `SUDAH ADA, tidak dibuat dobel: ${db.formatTask(existing, tz)}. Kalau jadwalnya perlu diubah, pakai update_task id=${existing.id}.`;
+    }
+    const id = await db.addTask(env.DB, toTask(t, "open"));
+    ctx.created.push(id);
+    return `Tersimpan: ${db.formatTask((await db.getTask(env.DB, id))!, tz)}`;
+  };
+
   switch (name) {
-    case "add_task": {
-      if (!input.title) throw new Error("title wajib diisi");
-      const id = await db.addTask(env.DB, toTask(input, "open"));
-      return `Tersimpan: ${db.formatTask((await db.getTask(env.DB, id))!, tz)}`;
+    case "add_task":
+      return addOne(input);
+    case "add_tasks": {
+      const tasks: TaskInput[] = Array.isArray(input.tasks) ? input.tasks : [];
+      if (!tasks.length) throw new Error("tasks kosong");
+      const out: string[] = [];
+      for (const t of tasks.slice(0, 20)) out.push(await addOne(t));
+      return out.join("\n");
     }
     case "propose_tasks": {
       const tasks: TaskInput[] = Array.isArray(input.tasks) ? input.tasks.filter((t: TaskInput) => t?.title) : [];
@@ -266,11 +301,13 @@ async function executeTool(env: Env, ctx: RunContext, name: string, input: any):
       if (input.remind !== undefined) patch.remind_at = localToUtc(input.remind, tz);
       const ok = await db.updateTask(env.DB, Number(input.id), patch);
       if (!ok) return `Tugas #${input.id} tidak ditemukan atau tidak ada perubahan.`;
+      ctx.updated.push(Number(input.id));
       return `Diperbarui: ${db.formatTask((await db.getTask(env.DB, Number(input.id)))!, tz)}`;
     }
     case "save_note": {
       if (!input.content) throw new Error("content wajib diisi");
       const id = await db.addNote(env.DB, { content: input.content, tags: input.tags, title: input.title });
+      ctx.notes.push(id);
       return `Catatan #${id} tersimpan.`;
     }
     case "search_notes": {
@@ -386,6 +423,17 @@ async function callPuter(env: Env, model: string, messages: ChatMessage[], tools
   return result.message;
 }
 
+/** Cek cepat apakah Claude via Puter bisa dipakai (untuk diagnosis di /status). */
+export async function puterPing(env: Env): Promise<{ ok: boolean; model: string; error?: string }> {
+  if (!env.PUTER_AUTH_TOKEN) return { ok: false, model: env.MODEL_FAST, error: "PUTER_AUTH_TOKEN belum diatur" };
+  try {
+    await callPuter(env, env.MODEL_FAST, [{ role: "user", content: "Balas satu kata: OK" }]);
+    return { ok: true, model: env.MODEL_FAST };
+  } catch (err) {
+    return { ok: false, model: env.MODEL_FAST, error: String(err).slice(0, 500) };
+  }
+}
+
 /** Model gratis Workers AI (cadangan, atau utama kalau Puter tidak dipasang). */
 async function callWorkersAI(env: Env, messages: ChatMessage[], tools?: Tool[]): Promise<ModelMessage> {
   const res = (await env.AI.run(env.FALLBACK_MODEL as any, {
@@ -435,8 +483,8 @@ export async function runAgent(
   env: Env,
   parts: UserPart[],
   opts: RunOptions,
-): Promise<{ text: string; proposed: number[]; model: string }> {
-  const ctx: RunContext = { source: opts.source, proposed: [] };
+): Promise<{ text: string; proposed: number[]; model: string; receipt: string }> {
+  const ctx: RunContext = { source: opts.source, proposed: [], created: [], updated: [], notes: [] };
 
   const userContent: Array<Record<string, unknown>> = [
     { type: "text", text: `[Waktu sekarang: ${nowContext(env.TIMEZONE_OFFSET)}]` },
@@ -483,6 +531,7 @@ export async function runAgent(
   // Tool yang benar-benar menulis data; dipakai untuk menangkap klaim palsu "sudah disimpan".
   const WRITE_TOOLS = new Set([
     "add_task",
+    "add_tasks",
     "propose_tasks",
     "update_task",
     "save_note",
@@ -501,7 +550,13 @@ export async function runAgent(
     const model = tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST;
     if (usePuter) {
       try {
-        msg = await callPuter(env, model, messages, toolsFor());
+        msg = await callPuter(env, model, messages, toolsFor()).catch(async (err) => {
+          // Gangguan sementara: coba sekali lagi sebelum pindah ke cadangan.
+          if (err instanceof QuotaError) throw err;
+          console.error("Puter gagal, coba ulang sekali", err);
+          await new Promise((r) => setTimeout(r, 1500));
+          return callPuter(env, model, messages, toolsFor());
+        });
         modelUsed = model;
       } catch (err) {
         // Sekali gagal, sisa giliran ini pakai cadangan supaya bot tetap jalan.
@@ -562,7 +617,27 @@ export async function runAgent(
 
   console.log(`runAgent source=${opts.source} model=${modelUsed}`);
   if (!text && ctx.proposed.length) text = "Ada usulan tugas di bawah, silakan cek 👇";
-  return { text: text || "Siap.", proposed: ctx.proposed, model: modelUsed };
+  return { text: text || "Siap.", proposed: ctx.proposed, model: modelUsed, receipt: await receipt(env, ctx) };
+}
+
+/** Bukti dari database tentang apa yang benar-benar tersimpan di giliran ini (bukan kata model). */
+async function receipt(env: Env, ctx: RunContext): Promise<string> {
+  const lines: string[] = [];
+  const tz = env.TIMEZONE_OFFSET;
+  for (const [label, ids] of [
+    ["➕", ctx.created],
+    ["✏️", [...new Set(ctx.updated)].filter((id) => !ctx.created.includes(id))],
+  ] as const) {
+    for (const id of ids) {
+      const t = await db.getTask(env.DB, id);
+      if (t) lines.push(`${label} ${db.formatTask(t, tz)}`);
+    }
+  }
+  for (const id of ctx.notes) {
+    const n = await db.getNote(env.DB, id);
+    if (n) lines.push(`🧠 catatan #${n.id}${n.title ? ` "${n.title}"` : ""}`);
+  }
+  return lines.length ? `🧾 Tercatat di sistem:\n${lines.join("\n")}` : "";
 }
 
 /** Riwayat harus diawali user dan bergantian user/assistant. */

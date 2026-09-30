@@ -6,7 +6,10 @@ import { Button, Card, Empty, Spinner } from "../components/ui";
 import { TaskModal, TaskRow } from "../components/tasks";
 import { useToast } from "../components/app-context";
 
-type Item = ChatMessage | { id: string; role: "proposals"; tasks: Task[] };
+type Item =
+  | ChatMessage
+  | { id: string; role: "proposals"; tasks: Task[] }
+  | { id: string; role: "receipt"; text: string };
 
 const SUGGESTIONS = [
   "Apa aja tugasku minggu ini?",
@@ -66,10 +69,11 @@ export function Chat({ onChanged }: { onChanged: () => void }) {
     const now = new Date().toISOString();
     setItems((cur) => [...(cur ?? []), { id: -Date.now(), role: "user", content: message, created_at: now }]);
     try {
-      const res = await api<{ reply: string; proposed: Task[] }>("/chat", { body: { message } });
+      const res = await api<{ reply: string; proposed: Task[]; receipt: string }>("/chat", { body: { message } });
       setItems((cur) => [
         ...(cur ?? []),
         { id: -Date.now() - 1, role: "assistant", content: res.reply, created_at: new Date().toISOString() },
+        ...(res.receipt ? [{ id: `r${Date.now()}`, role: "receipt" as const, text: res.receipt }] : []),
         ...(res.proposed.length ? [{ id: `p${Date.now()}`, role: "proposals" as const, tasks: res.proposed }] : []),
       ]);
       onChanged();
@@ -104,7 +108,11 @@ export function Chat({ onChanged }: { onChanged: () => void }) {
                 </div>
               )}
               {items.map((m) =>
-                m.role === "proposals" ? (
+                m.role === "receipt" ? (
+                  <p key={m.id} className="max-w-[85%] whitespace-pre-wrap rounded-lg border border-dashed border-line px-3 py-2 text-xs text-muted">
+                    {m.text}
+                  </p>
+                ) : m.role === "proposals" ? (
                   <div key={m.id} className="max-w-[85%] overflow-hidden rounded-xl border border-line">
                     <p className="border-b border-line bg-surface-2 px-4 py-2 text-xs font-medium text-muted">Usulan tugas</p>
                     <div className="divide-y divide-line">

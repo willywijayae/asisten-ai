@@ -241,7 +241,7 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
       input = profile.INTERVIEW_KICKOFF;
     }
     const history = await db.getHistory(env.DB);
-    const { text: reply, proposed } = await runAgent(env, [{ type: "text", text: input }], {
+    const { text: reply, proposed, receipt } = await runAgent(env, [{ type: "text", text: input }], {
       source: "web",
       useTools: true,
       history,
@@ -249,7 +249,7 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
     await db.appendHistory(env.DB, "user", text);
     await db.appendHistory(env.DB, "assistant", reply);
     const tasks = (await Promise.all(proposed.map((id) => db.getTask(env.DB, id)))).filter(Boolean);
-    return json({ reply, proposed: tasks });
+    return json({ reply, proposed: tasks, receipt });
   }
 
   // --- Sistem ---

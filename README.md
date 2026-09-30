@@ -102,7 +102,7 @@ Setelah terhubung, asisten bisa: mencari & membaca email, membuat draf balasan, 
 
 - `MODEL_FAST` — model Claude (Puter) untuk pekerjaan rutin: mencatat, tugas, pertanyaan singkat, briefing (default `claude-haiku-4-5`; bisa diganti `claude-sonnet-5-5`).
 - `MODEL_SMART` — model ahli (default `claude-opus-5-5`). Dipanggil otomatis saat model rutin menilai permintaannya rumit (analisis, strategi, riset, tulisan panjang), atau saat pesan berisi "pakai opus" / `/opus`.
-- `FALLBACK_MODEL` — model Workers AI gratis yang dipakai kalau jatah Puter habis atau Puter error (default `@cf/zai-org/glm-5.3-flash`). Tanpa `PUTER_AUTH_TOKEN`, bot langsung memakai model ini.
+- `FALLBACK_MODEL` — model Workers AI gratis yang dipakai kalau jatah Puter habis atau Puter error (default `@cf/google/gemma-4-26b-a4b-it`; pilih model yang tidak berlabel `require_workers_paid` kalau pakai paket Free). Tanpa `PUTER_AUTH_TOKEN`, bot langsung memakai model ini.
 - `/status?secret=<TELEGRAM_WEBHOOK_SECRET>` — cek status webhook & konfigurasi.
 - `TIMEZONE_OFFSET` — default `+07:00` (WIB). Jadwal cron di `wrangler.jsonc` dalam UTC.
 - Log: `npx wrangler tail`.
