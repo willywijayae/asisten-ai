@@ -10,7 +10,7 @@
     {
       "binding": "DB",
       "database_name": "asisten-ai-db",
-      "database_id": "REPLACE_WITH_D1_ID",
+      "database_id": "cc9859c0-2e7d-4b27-b2ad-2b6eb4e828cb",
       "migrations_dir": "migrations"
     }
   ],
