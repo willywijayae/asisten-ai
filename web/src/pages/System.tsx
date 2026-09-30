@@ -73,14 +73,17 @@ export function System({ onLogout }: { onLogout: () => void }) {
                   <Badge tone="ok">Normal · antrean {data.webhook?.pending ?? 0}</Badge>
                 )}
               </Row>
-              <Row label="Otak utama">
+              <Row label="Otak rutin (mencatat, tugas)">
                 {data.puterConnected ? (
                   <span className="inline-flex items-center gap-2">
-                    {data.model} <Badge tone="ok">via Puter</Badge>
+                    <code className="text-xs">{data.modelFast}</code> <Badge tone="ok">via Puter</Badge>
                   </span>
                 ) : (
                   <Badge tone="warn">Puter belum tersambung</Badge>
                 )}
+              </Row>
+              <Row label="Otak ahli (kalau rumit)">
+                <code className="text-xs">{data.modelSmart}</code>
               </Row>
               <Row label="Otak cadangan (gratis)">
                 <code className="text-xs">{data.fallbackModel}</code>

@@ -307,7 +307,7 @@ type ModelMessage = { content?: string | null; tool_calls?: ToolCall[] };
 class QuotaError extends Error {}
 
 /** Claude lewat Puter (user-pays: memakai jatah akun Puter pemilik). */
-async function callPuter(env: Env, messages: ChatMessage[], tools?: Tool[]): Promise<ModelMessage> {
+async function callPuter(env: Env, model: string, messages: ChatMessage[], tools?: Tool[]): Promise<ModelMessage> {
   const res = await fetch("https://api.puter.com/drivers/call", {
     method: "POST",
     headers: { "Content-Type": "text/plain;actually=json", Authorization: `Bearer ${env.PUTER_AUTH_TOKEN}` },
@@ -315,7 +315,7 @@ async function callPuter(env: Env, messages: ChatMessage[], tools?: Tool[]): Pro
       interface: "puter-chat-completion",
       driver: "ai-chat",
       method: "complete",
-      args: { messages, model: env.MODEL, max_tokens: 4096, normalize: true, ...(tools ? { tools } : {}) },
+      args: { messages, model, max_tokens: 4096, normalize: true, ...(tools ? { tools } : {}) },
       auth_token: env.PUTER_AUTH_TOKEN,
     }),
   });
@@ -348,14 +348,41 @@ async function callWorkersAI(env: Env, messages: ChatMessage[], tools?: Tool[]):
   return msg;
 }
 
+// --- Dua tingkat model: cepat & murah dulu, ahli hanya kalau perlu ---
+
+const ESCALATE_TOOL = fn(
+  "escalate",
+  "Serahkan permintaan ini ke model ahli (lebih pintar, lebih mahal) yang akan melanjutkan dengan konteks yang sama.",
+  {
+    type: "object",
+    properties: { reason: { type: "string", description: "Alasan singkat kenapa butuh model ahli." } },
+    required: ["reason"],
+  },
+);
+
+const FAST_PROMPT = `
+
+Kamu adalah model CEPAT. Tangani sendiri pekerjaan rutin: mencatat/mengubah/menyelesaikan tugas, menyimpan & mencari catatan, menjawab pertanyaan singkat, merangkum hal pendek, mengusulkan tugas dari pesan yang diteruskan.
+Panggil tool escalate (sebagai tool PERTAMA, sebelum tool lain) kalau permintaan butuh pemikiran berat, misalnya: analisis atau strategi (bisnis, marketing, keuangan), riset/perbandingan dari banyak sumber, rencana bertahap, menulis dokumen/proposal/email penting yang panjang, merangkum dokumen/email panjang, atau pemilik meminta "pakai opus"/"pikir mendalam". Kalau ragu untuk hal rutin, kerjakan sendiri.`;
+
+/** Pemilik bisa memaksa model ahli dengan menyebutnya di pesan. */
+const wantsSmart = (parts: UserPart[]) =>
+  parts.some((p) => p.type === "text" && /(^|\s)\/opus\b|pakai opus|pake opus|mikir (dalam|keras)|pikir mendalam/i.test(p.text));
+
 export interface RunOptions {
   source: string;
   useTools: boolean;
   history: { role: "user" | "assistant"; content: string }[];
+  /** Mulai dari tingkat mana. Default "fast" (boleh naik ke "smart" lewat escalate). */
+  tier?: "fast" | "smart";
 }
 
 /** Jalankan satu giliran agen sampai selesai. */
-export async function runAgent(env: Env, parts: UserPart[], opts: RunOptions): Promise<{ text: string; proposed: number[] }> {
+export async function runAgent(
+  env: Env,
+  parts: UserPart[],
+  opts: RunOptions,
+): Promise<{ text: string; proposed: number[]; model: string }> {
   const ctx: RunContext = { source: opts.source, proposed: [] };
 
   const userContent: Array<Record<string, unknown>> = [
@@ -368,34 +395,39 @@ export async function runAgent(env: Env, parts: UserPart[], opts: RunOptions): P
   ];
 
   const googleOn = opts.useTools && (await google.isConnected(env));
+  const basePrompt = SYSTEM_PROMPT + (googleOn ? GOOGLE_PROMPT : "");
+  let tier: "fast" | "smart" = opts.tier === "smart" || wantsSmart(parts) ? "smart" : "fast";
+  let usePuter = !!env.PUTER_AUTH_TOKEN;
+
   const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT + (googleOn ? GOOGLE_PROMPT : "") },
+    { role: "system", content: basePrompt + (tier === "fast" && usePuter ? FAST_PROMPT : "") },
     ...normalizeHistory(opts.history),
     { role: "user", content: userContent },
   ];
+  const baseTools = opts.useTools ? [...TOOLS, ...(googleOn ? GOOGLE_TOOLS : [])] : undefined;
+  // Model cepat boleh escalate (juga saat briefing tanpa tool, supaya tidak perlu).
+  const toolsFor = () => (baseTools && tier === "fast" && usePuter ? [...baseTools, ESCALATE_TOOL] : baseTools);
 
-  const tools = opts.useTools ? [...TOOLS, ...(googleOn ? GOOGLE_TOOLS : [])] : undefined;
-  let usePuter = !!env.PUTER_AUTH_TOKEN;
-  let notice = "";
-
+  let modelUsed = "";
   let text = "";
   for (let i = 0; i < 8; i++) {
     let msg: ModelMessage;
+    const model = tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST;
     if (usePuter) {
       try {
-        msg = await callPuter(env, messages, tools);
+        msg = await callPuter(env, model, messages, toolsFor());
+        modelUsed = model;
       } catch (err) {
         // Sekali gagal, sisa giliran ini pakai cadangan supaya bot tetap jalan.
-        console.error("Puter gagal, pindah ke Workers AI", err);
+        console.error(err instanceof QuotaError ? "Jatah Puter habis" : "Puter gagal", "→ Workers AI", err);
         usePuter = false;
-        notice =
-          err instanceof QuotaError
-            ? "⚠️ Jatah Claude di Puter habis, balasan ini pakai otak cadangan (gratis)."
-            : "⚠️ Claude lagi bermasalah, balasan ini pakai otak cadangan (gratis).";
-        msg = await callWorkersAI(env, messages, tools);
+        messages[0] = { role: "system", content: basePrompt };
+        msg = await callWorkersAI(env, messages, toolsFor());
+        modelUsed = env.FALLBACK_MODEL;
       }
     } else {
-      msg = await callWorkersAI(env, messages, tools);
+      msg = await callWorkersAI(env, messages, toolsFor());
+      modelUsed = env.FALLBACK_MODEL;
     }
     text = cleanText(msg.content);
 
@@ -403,19 +435,32 @@ export async function runAgent(env: Env, parts: UserPart[], opts: RunOptions): P
     if (!calls.length) break;
 
     messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: calls });
+    let escalated = false;
     for (const call of calls) {
       let result: string;
-      try {
-        result = await executeTool(env, ctx, call.function.name, parseArgs(call.function.arguments));
-      } catch (err) {
-        result = `ERROR: ${String(err)}`;
+      if (call.function.name === "escalate") {
+        escalated = tier === "fast";
+        result = escalated ? "Diserahkan ke model ahli. Model ahli: lanjutkan dan jawab permintaan pemilik." : "Sudah memakai model ahli.";
+      } else {
+        try {
+          result = await executeTool(env, ctx, call.function.name, parseArgs(call.function.arguments));
+        } catch (err) {
+          result = `ERROR: ${String(err)}`;
+        }
       }
       messages.push({ role: "tool", tool_call_id: call.id, content: result });
     }
+    if (escalated) {
+      const reason = calls.find((c) => c.function.name === "escalate");
+      console.log("Escalate ke model ahli:", reason ? JSON.stringify(parseArgs(reason.function.arguments)) : "");
+      tier = "smart";
+      messages[0] = { role: "system", content: basePrompt };
+    }
   }
 
+  console.log(`runAgent source=${opts.source} model=${modelUsed}`);
   if (!text && ctx.proposed.length) text = "Ada usulan tugas di bawah, silakan cek 👇";
-  return { text: text || "Siap.", proposed: ctx.proposed };
+  return { text: text || "Siap.", proposed: ctx.proposed, model: modelUsed };
 }
 
 /** Riwayat harus diawali user dan bergantian user/assistant. */

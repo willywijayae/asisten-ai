@@ -9,8 +9,10 @@ export interface Env {
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
   OWNER_CHAT_ID: string;
-  /** Model Claude di Puter, mis. claude-opus-5-5. */
-  MODEL: string;
+  /** Model Claude (Puter) untuk pekerjaan rutin, mis. claude-haiku-4-5. */
+  MODEL_FAST: string;
+  /** Model Claude (Puter) untuk permintaan rumit, mis. claude-opus-5-5. */
+  MODEL_SMART: string;
   /** Model Workers AI gratis sebagai cadangan. */
   FALLBACK_MODEL: string;
   TIMEZONE_OFFSET: string;

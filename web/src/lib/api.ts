@@ -39,7 +39,8 @@ export interface ChatMessage {
 export interface SystemInfo {
   bot: string | null;
   webhook: { pending: number; lastError: string | null; lastErrorAt: string | null } | null;
-  model: string;
+  modelFast: string;
+  modelSmart: string;
   fallbackModel: string;
   puterConnected: boolean;
   timezone: string;
