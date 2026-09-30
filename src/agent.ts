@@ -3,6 +3,7 @@ import * as db from "./db";
 import * as google from "./google";
 import * as profile from "./profile";
 import { formatLocal, localDayRange, localToUtc, nowContext } from "./time";
+import { clip, logActivity, logTool, type AgentId } from "./activity";
 
 const SYSTEM_PROMPT = `Kamu adalah asisten pribadi (chief of staff) milik satu orang: pemilik bot Telegram ini.
 Tugasmu: mencatat & mengawal komitmen, mengingatkan jadwal, merangkum informasi, dan menyimpan catatan (second brain).
@@ -470,6 +471,15 @@ const CLAIMS_SAVED =
 const wantsSmart = (parts: UserPart[]) =>
   parts.some((p) => p.type === "text" && /(^|\s)\/opus\b|pakai opus|pake opus|mikir (dalam|keras)|pikir mendalam/i.test(p.text));
 
+const SOURCE_ACTIVITY: Record<string, string> = {
+  chat: "Membaca pesan Telegram",
+  voice: "Memproses voice note",
+  photo: "Melihat foto",
+  forward: "Membaca pesan terusan",
+  web: "Membaca chat dari website",
+  briefing: "Menyusun briefing",
+};
+
 export interface RunOptions {
   source: string;
   useTools: boolean;
@@ -516,6 +526,12 @@ export async function runAgent(
   let tier: "fast" | "smart" = opts.tier === "smart" || wantsSmart(parts) ? "smart" : "fast";
   let usePuter = !!env.PUTER_AUTH_TOKEN;
 
+  // Siapa yang sedang "bekerja" di Kantor 3D.
+  let actor: AgentId = usePuter ? (tier === "smart" ? "opus" : "haiku") : "gemma";
+  const firstText = parts.find((p) => p.type === "text");
+  const snippet = opts.source === "briefing" || !firstText || firstText.type !== "text" ? "" : `: "${clip(firstText.text, 70)}"`;
+  await logActivity(env, actor, "start", (SOURCE_ACTIVITY[opts.source] ?? "Memproses permintaan") + snippet);
+
   const messages: ChatMessage[] = [
     { role: "system", content: basePrompt + (tier === "fast" && usePuter ? FAST_PROMPT : "") },
     ...normalizeHistory(opts.history),
@@ -545,78 +561,92 @@ export async function runAgent(
   let nudged = false;
 
   let text = "";
-  for (let i = 0; i < 8; i++) {
-    let msg: ModelMessage;
-    const model = tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST;
-    if (usePuter) {
-      try {
-        msg = await callPuter(env, model, messages, toolsFor()).catch(async (err) => {
-          // Gangguan sementara: coba sekali lagi sebelum pindah ke cadangan.
-          if (err instanceof QuotaError) throw err;
-          console.error("Puter gagal, coba ulang sekali", err);
-          await new Promise((r) => setTimeout(r, 1500));
-          return callPuter(env, model, messages, toolsFor());
-        });
-        modelUsed = model;
-      } catch (err) {
-        // Sekali gagal, sisa giliran ini pakai cadangan supaya bot tetap jalan.
-        console.error(err instanceof QuotaError ? "Jatah Puter habis" : "Puter gagal", "→ Workers AI", err);
-        usePuter = false;
-        messages[0] = { role: "system", content: basePrompt };
+  try {
+    for (let i = 0; i < 8; i++) {
+      let msg: ModelMessage;
+      const model = tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST;
+      if (usePuter) {
+        try {
+          msg = await callPuter(env, model, messages, toolsFor()).catch(async (err) => {
+            // Gangguan sementara: coba sekali lagi sebelum pindah ke cadangan.
+            if (err instanceof QuotaError) throw err;
+            console.error("Puter gagal, coba ulang sekali", err);
+            await new Promise((r) => setTimeout(r, 1500));
+            return callPuter(env, model, messages, toolsFor());
+          });
+          modelUsed = model;
+        } catch (err) {
+          // Sekali gagal, sisa giliran ini pakai cadangan supaya bot tetap jalan.
+          console.error(err instanceof QuotaError ? "Jatah Puter habis" : "Puter gagal", "→ Workers AI", err);
+          usePuter = false;
+          messages[0] = { role: "system", content: basePrompt };
+          await logActivity(env, actor, "error", err instanceof QuotaError ? "Jatah Puter habis" : "Puter tidak merespons");
+          actor = "gemma";
+          await logActivity(env, actor, "start", "Menggantikan sementara (otak cadangan)");
+          msg = await callWorkersAI(env, messages, toolsFor());
+          modelUsed = env.FALLBACK_MODEL;
+        }
+      } else {
         msg = await callWorkersAI(env, messages, toolsFor());
         modelUsed = env.FALLBACK_MODEL;
       }
-    } else {
-      msg = await callWorkersAI(env, messages, toolsFor());
-      modelUsed = env.FALLBACK_MODEL;
-    }
-    text = cleanText(msg.content);
+      text = cleanText(msg.content);
 
-    const calls = msg.tool_calls ?? [];
-    console.log(`step ${i} model=${modelUsed} tools=[${calls.map((c) => c.function.name).join(",")}]`);
-    if (!calls.length) {
-      // Klaim menyimpan tanpa pernah memanggil tool → minta ulang sekali, kali ini dengan tool.
-      if (opts.useTools && !wrote && !nudged && CLAIMS_SAVED.test(text)) {
-        nudged = true;
-        console.log("Klaim tersimpan tanpa tool, minta ulang");
-        messages.push({ role: "assistant", content: msg.content ?? "" });
-        messages.push({
-          role: "user",
-          content:
-            "[Sistem] Kamu bilang sudah menyimpan/mencatat, tapi belum memanggil tool apa pun, jadi belum ada yang tersimpan. Panggil tool yang sesuai sekarang, lalu jawab ulang pemilik berdasarkan hasilnya.",
-        });
-        continue;
-      }
-      break;
-    }
-
-    messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: calls });
-    let escalated = false;
-    for (const call of calls) {
-      let result: string;
-      if (call.function.name === "escalate") {
-        escalated = tier === "fast";
-        result = escalated ? "Diserahkan ke model ahli. Model ahli: lanjutkan dan jawab permintaan pemilik." : "Sudah memakai model ahli.";
-      } else {
-        try {
-          result = await executeTool(env, ctx, call.function.name, parseArgs(call.function.arguments));
-          if (WRITE_TOOLS.has(call.function.name)) wrote = true;
-        } catch (err) {
-          result = `ERROR: ${String(err)}`;
+      const calls = msg.tool_calls ?? [];
+      console.log(`step ${i} model=${modelUsed} tools=[${calls.map((c) => c.function.name).join(",")}]`);
+      if (!calls.length) {
+        // Klaim menyimpan tanpa pernah memanggil tool → minta ulang sekali, kali ini dengan tool.
+        if (opts.useTools && !wrote && !nudged && CLAIMS_SAVED.test(text)) {
+          nudged = true;
+          console.log("Klaim tersimpan tanpa tool, minta ulang");
+          messages.push({ role: "assistant", content: msg.content ?? "" });
+          messages.push({
+            role: "user",
+            content:
+              "[Sistem] Kamu bilang sudah menyimpan/mencatat, tapi belum memanggil tool apa pun, jadi belum ada yang tersimpan. Panggil tool yang sesuai sekarang, lalu jawab ulang pemilik berdasarkan hasilnya.",
+          });
+          continue;
         }
+        break;
       }
-      messages.push({ role: "tool", tool_call_id: call.id, content: result });
+
+      messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: calls });
+      let escalated = false;
+      for (const call of calls) {
+        let result: string;
+        if (call.function.name === "escalate") {
+          escalated = tier === "fast";
+          result = escalated ? "Diserahkan ke model ahli. Model ahli: lanjutkan dan jawab permintaan pemilik." : "Sudah memakai model ahli.";
+        } else {
+          try {
+            result = await executeTool(env, ctx, call.function.name, parseArgs(call.function.arguments));
+            if (WRITE_TOOLS.has(call.function.name)) wrote = true;
+          } catch (err) {
+            result = `ERROR: ${String(err)}`;
+          }
+          await logTool(env, actor, call.function.name, WRITE_TOOLS.has(call.function.name) || result.startsWith("ERROR") ? result : undefined);
+        }
+        messages.push({ role: "tool", tool_call_id: call.id, content: result });
+      }
+      if (escalated) {
+        const reason = calls.find((c) => c.function.name === "escalate");
+        const why = reason ? String((parseArgs(reason.function.arguments) as { reason?: unknown }).reason ?? "") : "";
+        console.log("Escalate ke model ahli:", why);
+        await logActivity(env, actor, "done", `Menyerahkan ke Opus${why ? `: ${why}` : ""}`);
+        tier = "smart";
+        actor = "opus";
+        await logActivity(env, actor, "start", `Mengambil alih dari Haiku${why ? `: ${why}` : ""}`);
+        messages[0] = { role: "system", content: basePrompt };
+      }
     }
-    if (escalated) {
-      const reason = calls.find((c) => c.function.name === "escalate");
-      console.log("Escalate ke model ahli:", reason ? JSON.stringify(parseArgs(reason.function.arguments)) : "");
-      tier = "smart";
-      messages[0] = { role: "system", content: basePrompt };
-    }
+  } catch (err) {
+    await logActivity(env, actor, "error", `Gagal: ${String(err)}`);
+    throw err;
   }
 
   console.log(`runAgent source=${opts.source} model=${modelUsed}`);
   if (!text && ctx.proposed.length) text = "Ada usulan tugas di bawah, silakan cek 👇";
+  await logActivity(env, actor, "done", text || "Siap.");
   return { text: text || "Siap.", proposed: ctx.proposed, model: modelUsed, receipt: await receipt(env, ctx) };
 }
 

@@ -7,6 +7,7 @@ import { Telegram } from "./telegram";
 import * as google from "./google";
 import * as profile from "./profile";
 import { localDayRange, localToUtc } from "./time";
+import { officeState } from "./activity";
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(data, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -151,6 +152,40 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
       overdue,
       pending,
       recentNotes: notes,
+    });
+  }
+
+  // --- Kantor 3D: status tiap agen + aktivitas terbaru + angka untuk papan tugas ---
+  if (path === "/office" && method === "GET") {
+    const now = new Date().toISOString();
+    const [todayStart] = localDayRange(env.TIMEZONE_OFFSET, 0);
+    const [state, counts] = await Promise.all([
+      officeState(env, todayStart),
+      env.DB.prepare(
+        `SELECT
+           sum(status = 'open') AS open,
+           sum(status = 'pending') AS pending,
+           sum(status = 'open' AND due_at IS NOT NULL AND due_at < ?1) AS overdue,
+           sum(status = 'done' AND done_at >= ?2) AS doneToday,
+           (SELECT count(*) FROM notes) AS notes
+         FROM tasks`,
+      )
+        .bind(now, todayStart)
+        .first<Record<string, number | null>>(),
+    ]);
+    return json({
+      now,
+      ...state,
+      counts: {
+        open: counts?.open ?? 0,
+        pending: counts?.pending ?? 0,
+        overdue: counts?.overdue ?? 0,
+        doneToday: counts?.doneToday ?? 0,
+        notes: counts?.notes ?? 0,
+      },
+      models: { haiku: env.MODEL_FAST, opus: env.MODEL_SMART, gemma: env.FALLBACK_MODEL },
+      puterConnected: !!env.PUTER_AUTH_TOKEN,
+      timezone: env.TIMEZONE_OFFSET,
     });
   }
 

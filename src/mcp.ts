@@ -6,6 +6,7 @@ import * as db from "./db";
 import * as profile from "./profile";
 import { executeTool, receipt, type RunContext } from "./agent";
 import { Telegram } from "./telegram";
+import { logTool } from "./activity";
 import { localDayRange, nowContext } from "./time";
 
 // Server MCP "Second Brain": membuka tugas, catatan, profil & preferensi pemilik ke Claude
@@ -46,8 +47,27 @@ async function write(env: Env, name: string, input: unknown) {
   return text(result);
 }
 
+const WRITES = new Set(["add_tasks", "update_task", "add_note", "update_note", "add_preference"]);
+
+/** Setiap panggilan tool dari Claude tampil di Kantor 3D (karakter "Claude"). */
+function withActivity(env: Env, server: McpServer): McpServer {
+  type Result = { content: { type: string; text?: string }[] };
+  const register = server.registerTool.bind(server) as (...a: unknown[]) => unknown;
+  (server as unknown as { registerTool: unknown }).registerTool = (
+    name: string,
+    config: unknown,
+    cb: (...a: unknown[]) => Promise<Result>,
+  ) =>
+    register(name, config, async (...args: unknown[]) => {
+      const res = await cb(...args);
+      await logTool(env, "claude", name, WRITES.has(name) ? res.content[0]?.text : undefined);
+      return res;
+    });
+  return server;
+}
+
 function buildServer(env: Env): McpServer {
-  const server = new McpServer({ name: "second-brain", version: "1.0.0" }, { instructions: INSTRUCTIONS });
+  const server = withActivity(env, new McpServer({ name: "second-brain", version: "1.0.0" }, { instructions: INSTRUCTIONS }));
   const tz = env.TIMEZONE_OFFSET;
   const readOnly = { readOnlyHint: true, openWorldHint: false };
 

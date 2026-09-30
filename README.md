@@ -19,6 +19,7 @@ Asisten AI pribadi ala "AI Chief of Staff" yang hidup di Telegram dan jalan di C
 Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Telegram** → masukkan kode 6 digit dari bot. Sesi berlaku 30 hari.
 
 - **Dashboard** — agenda hari ini, yang terlewat, usulan yang menunggu approval, catatan terbaru, dan *Tangkap cepat*.
+- **Kantor 3D** — kantor low-poly (terinspirasi [Claw3D](https://github.com/iamlukethedev/Claw3D)) berisi 7 "karyawan" AI: Haiku, Opus, Whisper, Gemma, Pengingat, Briefing, dan Claude (MCP). Mereka bergerak sesuai aktivitas asli dari tabel `activity`: duduk mengetik saat bekerja, jalan ke papan tugas / arsip catatan / kotak Gmail saat memakai tool, dan santai ke pantry atau sofa saat menganggur. Ada kotak perintah untuk menyuruh tim langsung. Kodenya ada di `web/src/office/`; three.js hanya dimuat di halaman ini.
 - **Tugas** — filter per status/waktu, cari, ubah, tandai selesai, setujui/buang usulan.
 - **Second Brain** — semua catatan, cari & filter per tag.
 - **Chat AI** — otak & riwayat yang sama dengan bot Telegram.

@@ -5,6 +5,7 @@ import { puterPing, runAgent, type UserPart } from "./agent";
 import { Telegram, type TgCallbackQuery, type TgMessage, type TgUpdate } from "./telegram";
 import { formatLocal } from "./time";
 import { sendBriefing } from "./briefing";
+import { clip, logActivity, pruneActivity } from "./activity";
 import { handleApi } from "./api";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp";
@@ -118,7 +119,10 @@ const app = {
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
     if (!env.OWNER_CHAT_ID) return;
     if (event.cron === "*/5 * * * *") await sendReminders(env);
-    else if (event.cron === "0 0 * * *") await sendBriefing(env, "morning");
+    else if (event.cron === "0 0 * * *") {
+      await pruneActivity(env).catch((err) => console.error("Gagal membersihkan aktivitas", err));
+      await sendBriefing(env, "morning");
+    }
     else if (event.cron === "0 14 * * *") await sendBriefing(env, "evening");
   },
 } satisfies ExportedHandler<Env, TgUpdate>;
@@ -246,8 +250,13 @@ async function buildUserContent(
   const audio = m.voice ?? m.audio;
   if (audio) {
     source = "voice";
+    await logActivity(env, "whisper", "start", `Mendengarkan voice note ${audio.duration} detik`);
     const buf = await tg.downloadFile(audio.file_id);
-    const transcript = await transcribe(env, buf);
+    const transcript = await transcribe(env, buf).catch(async (err) => {
+      await logActivity(env, "whisper", "error", "Gagal mentranskrip voice note");
+      throw err;
+    });
+    await logActivity(env, "whisper", "done", transcript ? `Transkrip: "${clip(transcript, 120)}"` : "Suaranya tidak terdengar jelas");
     prefix.push(`[Voice note ${audio.duration} detik, transkrip:]\n${transcript || "(tidak terdengar jelas)"}`);
   }
 
@@ -309,6 +318,7 @@ async function sendReminders(env: Env): Promise<void> {
   const tg = new Telegram(env.TELEGRAM_BOT_TOKEN);
   for (const t of await db.dueReminders(env.DB, new Date())) {
     await db.markReminded(env.DB, t.id);
+    await logActivity(env, "pengingat", "done", `Mengingatkan: ${t.title}`, "board");
     await tg.send(env.OWNER_CHAT_ID, `⏰ Pengingat:\n${db.formatTask(t, env.TIMEZONE_OFFSET)}`, [
       [
         { text: "✅ Selesai", callback_data: `done:${t.id}` },

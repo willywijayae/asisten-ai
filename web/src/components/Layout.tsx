@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Brain, CheckSquare, LayoutDashboard, MessageCircle, Settings, UserRound, type LucideIcon } from "lucide-react";
+import { Box, Brain, CheckSquare, LayoutDashboard, MessageCircle, Settings, UserRound, type LucideIcon } from "lucide-react";
 import { useRouter } from "./app-context";
 
 export interface NavItem {
@@ -16,6 +16,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     group: "Asisten",
     items: [
       { path: "/", label: "Dashboard", short: "Beranda", icon: LayoutDashboard },
+      { path: "/kantor", label: "Kantor 3D", short: "Kantor", icon: Box },
       { path: "/tugas", label: "Tugas", short: "Tugas", icon: CheckSquare },
       { path: "/catatan", label: "Second Brain", short: "Brain", icon: Brain },
       { path: "/chat", label: "Chat AI", short: "Chat", icon: MessageCircle },
@@ -87,7 +88,7 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
       </aside>
 
       <main className="min-w-0 flex-1 px-4 pb-24 pt-6 md:px-10 md:pb-10 md:pt-8">
-        <div className="mx-auto max-w-5xl">{children}</div>
+        <div className={`mx-auto ${path.startsWith("/kantor") ? "max-w-7xl" : "max-w-5xl"}`}>{children}</div>
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface/95 backdrop-blur md:hidden">
