@@ -37,6 +37,7 @@ Cron (tiap 5 menit / 07:00 / 21:00) ──▶ pengingat & briefing ──▶ Tel
 | File | Isi |
 |---|---|
 | `src/index.ts` | Route webhook, consumer queue, perintah, tombol approval, cron |
+| `src/google.ts` | OAuth Google, Gmail (cari/baca/draf), Drive (cari/baca/simpan) |
 | `src/api.ts`, `src/auth.ts` | REST API website admin & login kode Telegram |
 | `web/` | Website admin (React + Vite + Tailwind), build ke `web/dist` |
 | `src/agent.ts` | Prompt sistem, tool, dan loop Claude |
@@ -74,6 +75,25 @@ Setelah deploy:
 1. Buka `https://asisten-ai.<subdomain>.workers.dev/setup?secret=<TELEGRAM_WEBHOOK_SECRET>` sekali untuk mendaftarkan webhook.
 2. Chat bot kamu di Telegram → bot membalas dengan chat ID kamu.
 3. Isi `OWNER_CHAT_ID` di `wrangler.jsonc` dengan angka itu, lalu `npm run deploy` lagi.
+
+## Gmail & Google Drive
+
+Izin yang diminta (minimal): baca Gmail, buat draf (bot **tidak pernah mengirim** email), baca Drive, dan tulis file buatan app sendiri (folder "Second Brain").
+
+1. Buka [console.cloud.google.com](https://console.cloud.google.com) → buat project baru (mis. `asisten-ai`).
+2. **APIs & Services → Library** → aktifkan **Gmail API** dan **Google Drive API**.
+3. **Google Auth Platform → Branding**: isi nama app & email. **Audience**: External, tambahkan email kamu sebagai test user, lalu klik **Publish app** (status *In production*). Kalau tetap *Testing*, token kedaluwarsa tiap 7 hari.
+4. **Clients → Create client** → *Web application* → Authorized redirect URI:
+   `https://asisten-ai.<subdomain>.workers.dev/api/google/callback`
+5. Simpan kredensialnya:
+   ```bash
+   npx wrangler secret put GOOGLE_CLIENT_ID
+   npx wrangler secret put GOOGLE_CLIENT_SECRET
+   npx wrangler secret put ENCRYPTION_KEY   # string acak, mis. `openssl rand -hex 32`
+   ```
+6. Website admin → **Sistem → Hubungkan Google**. Layar "Google hasn't verified this app" wajar untuk app pribadi: klik *Advanced → Go to …*, lalu centang semua izin.
+
+Setelah terhubung, asisten bisa: mencari & membaca email, membuat draf balasan, mencari & membaca Docs/Sheets/Slides, dan menyimpan hasil ke Drive. Briefing pagi ikut merangkum email belum dibaca 24 jam terakhir.
 
 ## Pengaturan
 

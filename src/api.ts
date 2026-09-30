@@ -4,6 +4,7 @@ import { runAgent } from "./agent";
 import { isLoggedIn, logout, requestCode, sessionCookie, verifyCode } from "./auth";
 import { sendBriefing } from "./briefing";
 import { Telegram } from "./telegram";
+import * as google from "./google";
 import { localDayRange, localToUtc } from "./time";
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -102,6 +103,21 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
   if (path === "/auth/logout" && method === "POST") {
     await logout(env, req);
     return json({ ok: true }, 200, { "set-cookie": sessionCookie(null) });
+  }
+
+  // Callback OAuth Google: datang dari redirect lintas situs (cookie Strict tidak ikut),
+  // jadi divalidasi dengan state sekali pakai yang dibuat saat pemilik yang login menekan "Hubungkan".
+  if (path === "/google/callback" && method === "GET") {
+    const back = (params: Record<string, string>) =>
+      Response.redirect(`${url.origin}/sistem?${new URLSearchParams(params)}`, 302);
+    const err = url.searchParams.get("error");
+    if (err) return back({ google: "error", message: err === "access_denied" ? "Akses tidak diizinkan" : err });
+    try {
+      const email = await google.handleCallback(env, url.origin, url.searchParams.get("code") ?? "", url.searchParams.get("state") ?? "");
+      return back({ google: "ok", email });
+    } catch (e) {
+      return back({ google: "error", message: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
@@ -253,6 +269,17 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
     await sendBriefing(env, kind === "evening" ? "evening" : "morning");
     return json({ ok: true });
   }
+  // --- Google (Gmail & Drive) ---
+  if (path === "/google/status" && method === "GET") return json(await google.status(env));
+  if (path === "/google/connect" && method === "GET") {
+    if (!google.googleConfigured(env)) throw new HttpError(400, "GOOGLE_CLIENT_ID/SECRET belum diatur");
+    return Response.redirect(await google.authUrl(env, url.origin), 302);
+  }
+  if (path === "/google/disconnect" && method === "POST") {
+    await google.disconnect(env);
+    return json({ ok: true });
+  }
+
   if (path === "/history/clear" && method === "POST") {
     await db.clearHistory(env.DB);
     return json({ ok: true });

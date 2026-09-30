@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
-import { LogOut, Moon, RotateCcw, Sun } from "lucide-react";
-import { api, type SystemInfo } from "../lib/api";
+import { useEffect, useState, type ReactNode } from "react";
+import { FolderOpen, LogOut, Mail, Moon, RotateCcw, Sun, Unplug } from "lucide-react";
+import { api, type GoogleStatus, type SystemInfo } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import { fmtWhen } from "../lib/time";
 import { Badge, Button, Card, Empty, PageHeader, SectionTitle, Spinner } from "../components/ui";
@@ -17,8 +17,18 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 export function System({ onLogout }: { onLogout: () => void }) {
   const { data, error } = useLoad(() => api<SystemInfo>("/system"), []);
+  const g = useLoad(() => api<GoogleStatus>("/google/status"), []);
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+
+  // Hasil kembali dari halaman izin Google (?google=ok|error).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("google") === "ok") toast.ok(`Google terhubung: ${p.get("email")}`);
+    if (p.get("google") === "error") toast.error(`Gagal menghubungkan Google: ${p.get("message")}`);
+    if (p.has("google")) window.history.replaceState(null, "", "/sistem");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const run = async (key: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(key);
@@ -76,6 +86,64 @@ export function System({ onLogout }: { onLogout: () => void }) {
                 <code className="text-xs">{data.fallbackModel}</code>
               </Row>
               <Row label="Zona waktu">UTC{data.timezone}</Row>
+            </Card>
+          </section>
+
+          <section className="lg:col-span-2">
+            <SectionTitle>Google (Gmail & Drive)</SectionTitle>
+            <Card className="p-4">
+              {!g.data ? (
+                <Spinner />
+              ) : !g.data.configured ? (
+                <div className="text-sm">
+                  <p className="font-medium">Belum dikonfigurasi</p>
+                  <p className="mt-1 text-muted">
+                    Buat OAuth client di Google Cloud, lalu simpan GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, dan ENCRYPTION_KEY sebagai secret
+                    Worker. Panduannya ada di README bagian "Gmail & Google Drive".
+                  </p>
+                </div>
+              ) : g.data.email ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-ok-soft text-ok">
+                      <Mail className="size-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{g.data.email}</p>
+                      <p className="text-xs text-muted">
+                        Terhubung {g.data.connectedAt ? fmtWhen(g.data.connectedAt) : ""} · baca email, buat draf, baca Drive, simpan ke folder
+                        "Second Brain"
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    loading={busy === "gdis"}
+                    onClick={() =>
+                      confirm("Putuskan Gmail & Drive? Asisten tidak bisa lagi membaca email/file.") &&
+                      run("gdis", () => api("/google/disconnect", { method: "POST" }).then(g.reload), "Google diputuskan")
+                    }
+                  >
+                    <Unplug className="size-3.5" /> Putuskan
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm">
+                    <p className="font-medium">Belum terhubung</p>
+                    <p className="mt-0.5 text-muted">
+                      Asisten akan bisa membaca email & membuat draf balasan (tidak pernah mengirim), serta mencari & membaca file Drive.
+                    </p>
+                  </div>
+                  <a
+                    href="/api/google/connect"
+                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-medium text-accent-fg hover:opacity-90"
+                  >
+                    <FolderOpen className="size-4" /> Hubungkan Google
+                  </a>
+                </div>
+              )}
             </Card>
           </section>
 

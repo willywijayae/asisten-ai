@@ -12,6 +12,7 @@ const SUGGESTIONS = [
   "Apa aja tugasku minggu ini?",
   "Ringkas catatan yang berhubungan dengan marketing",
   "Ingetin aku follow up klien besok jam 10",
+  "Email apa aja yang belum kubalas hari ini?",
 ];
 
 export function Chat({ onChanged }: { onChanged: () => void }) {

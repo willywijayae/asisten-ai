@@ -45,6 +45,12 @@ export interface SystemInfo {
   timezone: string;
 }
 
+export interface GoogleStatus {
+  configured: boolean;
+  email: string | null;
+  connectedAt: string | null;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);

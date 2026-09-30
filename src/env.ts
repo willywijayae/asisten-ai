@@ -14,4 +14,9 @@ export interface Env {
   /** Model Workers AI gratis sebagai cadangan. */
   FALLBACK_MODEL: string;
   TIMEZONE_OFFSET: string;
+  /** OAuth client Google (opsional) untuk Gmail & Drive. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  /** Kunci enkripsi token Google di database. */
+  ENCRYPTION_KEY?: string;
 }
