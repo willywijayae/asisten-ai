@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f6f6f3;
+  --surface: #ffffff;
+  --surface-2: #efefea;
+  --fg: #1a1c21;
+  --muted: #676c75;
+  --line: #e3e3dd;
+  --accent: #4f46e5;
+  --accent-soft: #eceafd;
+  --accent-fg: #ffffff;
+  --danger: #d92d20;
+  --danger-soft: #fdeceb;
+  --warn: #b45309;
+  --warn-soft: #fdf3e2;
+  --ok: #15803d;
+  --ok-soft: #e7f6ec;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1014;
+    --surface: #161920;
+    --surface-2: #1e222b;
+    --fg: #e6e8ec;
+    --muted: #979ead;
+    --line: #2a2f3a;
+    --accent: #8b8cf8;
+    --accent-soft: #23244a;
+    --accent-fg: #0e1014;
+    --danger: #f97066;
+    --danger-soft: #3a1a1a;
+    --warn: #fbbf24;
+    --warn-soft: #362a12;
+    --ok: #4ade80;
+    --ok-soft: #13301f;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* Di layer components supaya utility (pl-9, w-auto, dst.) tetap bisa menimpa. */
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg outline-none transition placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20;
+  }
+}

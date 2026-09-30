@@ -78,6 +78,7 @@ const TOOLS = [
   fn("save_note", "Simpan catatan/fakta ke second brain pemilik.", {
     type: "object",
     properties: {
+      title: { type: "string", description: "Judul singkat catatan." },
       content: { type: "string", description: "Isi catatan lengkap, bisa berdiri sendiri tanpa konteks obrolan." },
       tags: { type: "string", description: "Kata kunci dipisah koma, mis. 'klien, budi, harga'." },
     },
@@ -174,13 +175,15 @@ async function executeTool(env: Env, ctx: RunContext, name: string, input: any):
     }
     case "save_note": {
       if (!input.content) throw new Error("content wajib diisi");
-      const id = await db.addNote(env.DB, input.content, input.tags);
+      const id = await db.addNote(env.DB, { content: input.content, tags: input.tags, title: input.title });
       return `Catatan #${id} tersimpan.`;
     }
     case "search_notes": {
       const rows = await db.searchNotes(env.DB, input.query ?? "");
       return rows.length
-        ? rows.map((n) => `#${n.id} (${n.created_at.slice(0, 10)}) ${n.content}${n.tags ? ` [${n.tags}]` : ""}`).join("\n")
+        ? rows
+            .map((n) => `#${n.id} (${n.created_at.slice(0, 10)}) ${n.title ? n.title + ": " : ""}${n.content}${n.tags ? ` [${n.tags}]` : ""}`)
+            .join("\n")
         : "Tidak ada catatan yang cocok.";
     }
     default:

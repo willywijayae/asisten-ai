@@ -12,6 +12,18 @@ Asisten AI pribadi ala "AI Chief of Staff" yang hidup di Telegram dan jalan di C
 - **Briefing pagi 07:00 & rekap malam 21:00 WIB** dikirim otomatis.
 - **Privat** — bot hanya melayani `OWNER_CHAT_ID`; semua data ada di database D1 milikmu sendiri.
 
+## Website admin
+
+Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Telegram** → masukkan kode 6 digit dari bot. Sesi berlaku 30 hari.
+
+- **Dashboard** — agenda hari ini, yang terlewat, usulan yang menunggu approval, catatan terbaru, dan *Tangkap cepat*.
+- **Tugas** — filter per status/waktu, cari, ubah, tandai selesai, setujui/buang usulan.
+- **Second Brain** — semua catatan, cari & filter per tag.
+- **Chat AI** — otak & riwayat yang sama dengan bot Telegram.
+- **Sistem** — status bot/webhook/model, kirim briefing manual, reset riwayat.
+
+Modul baru (mis. Marketing & Riset) ditambahkan di `web/src/components/Layout.tsx` (menu) dan `web/src/App.tsx` (halaman), dengan endpoint di `src/api.ts`.
+
 ## Arsitektur
 
 ```
@@ -25,6 +37,8 @@ Cron (tiap 5 menit / 07:00 / 21:00) ──▶ pengingat & briefing ──▶ Tel
 | File | Isi |
 |---|---|
 | `src/index.ts` | Route webhook, consumer queue, perintah, tombol approval, cron |
+| `src/api.ts`, `src/auth.ts` | REST API website admin & login kode Telegram |
+| `web/` | Website admin (React + Vite + Tailwind), build ke `web/dist` |
 | `src/agent.ts` | Prompt sistem, tool, dan loop Claude |
 | `src/db.ts` | Query D1 |
 | `src/telegram.ts` | Klien Telegram Bot API |
@@ -51,7 +65,7 @@ npx wrangler secret put TELEGRAM_WEBHOOK_SECRET   # string acak bebas, mis. hasi
 # 3. Login Puter (browser terbuka, token langsung disimpan sebagai secret)
 npm run puter:login
 
-# 4. Deploy
+# 4. Build website + deploy
 npm run deploy
 ```
 
@@ -68,6 +82,7 @@ Setelah deploy:
 - `/status?secret=<TELEGRAM_WEBHOOK_SECRET>` — cek status webhook & konfigurasi.
 - `TIMEZONE_OFFSET` — default `+07:00` (WIB). Jadwal cron di `wrangler.jsonc` dalam UTC.
 - Log: `npx wrangler tail`.
+- Development lokal: `npm run dev` (Worker + website di http://localhost:8787, jalankan `npm run build` dulu) atau `npm run dev:web` untuk hot reload di port 5173.
 
 ## Rencana berikutnya
 

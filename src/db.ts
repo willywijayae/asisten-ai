@@ -68,6 +68,11 @@ export async function updateTask(
   return res.meta.changes > 0;
 }
 
+export async function deleteTask(db: D1Database, id: number): Promise<boolean> {
+  const res = await db.prepare("DELETE FROM tasks WHERE id = ?").bind(id).run();
+  return res.meta.changes > 0;
+}
+
 export interface TaskFilter {
   statuses?: Task["status"][];
   dueFrom?: string;
@@ -130,38 +135,96 @@ export function formatTask(t: Task, tz: string): string {
 
 // --- Notes (second brain) ---
 
-export async function addNote(db: D1Database, content: string, tags?: string | null): Promise<number> {
+export interface Note {
+  id: number;
+  title: string | null;
+  content: string;
+  tags: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export async function addNote(
+  db: D1Database,
+  n: { content: string; tags?: string | null; title?: string | null },
+): Promise<number> {
   const row = await db
-    .prepare("INSERT INTO notes (content, tags) VALUES (?, ?) RETURNING id")
-    .bind(content, tags ?? null)
+    .prepare("INSERT INTO notes (title, content, tags) VALUES (?, ?, ?) RETURNING id")
+    .bind(n.title || null, n.content, normalizeTags(n.tags))
     .first<{ id: number }>();
   return row!.id;
 }
 
-export async function searchNotes(
+export async function getNote(db: D1Database, id: number): Promise<Note | null> {
+  return db.prepare("SELECT * FROM notes WHERE id = ?").bind(id).first<Note>();
+}
+
+export async function updateNote(
   db: D1Database,
-  query: string,
-  limit = 15,
-): Promise<{ id: number; content: string; tags: string | null; created_at: string }[]> {
+  id: number,
+  patch: { content?: string; tags?: string | null; title?: string | null },
+): Promise<boolean> {
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (patch.content !== undefined) (sets.push("content = ?"), vals.push(patch.content));
+  if (patch.title !== undefined) (sets.push("title = ?"), vals.push(patch.title || null));
+  if (patch.tags !== undefined) (sets.push("tags = ?"), vals.push(normalizeTags(patch.tags)));
+  if (!sets.length) return false;
+  sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+  const res = await db
+    .prepare(`UPDATE notes SET ${sets.join(", ")} WHERE id = ?`)
+    .bind(...vals, id)
+    .run();
+  return res.meta.changes > 0;
+}
+
+export async function deleteNote(db: D1Database, id: number): Promise<boolean> {
+  const res = await db.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
+  return res.meta.changes > 0;
+}
+
+/** "Klien,  Budi ,klien" → "klien, budi" */
+function normalizeTags(tags: string | null | undefined): string | null {
+  if (!tags) return null;
+  const list = [...new Set(tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
+  return list.length ? list.join(", ") : null;
+}
+
+export async function searchNotes(db: D1Database, query: string, limit = 15, tag?: string): Promise<Note[]> {
   const words = query
     .toLowerCase()
     .split(/\s+/)
     .filter((w) => w.length > 1)
     .slice(0, 6);
+  const tagWhere = tag ? "(', ' || coalesce(tags, '') || ',') LIKE ?" : "1";
+  const tagVals = tag ? [`%, ${tag.toLowerCase()},%`] : [];
   if (!words.length) {
     const { results } = await db
-      .prepare("SELECT * FROM notes ORDER BY id DESC LIMIT ?")
-      .bind(limit)
-      .all<{ id: number; content: string; tags: string | null; created_at: string }>();
+      .prepare(`SELECT * FROM notes WHERE ${tagWhere} ORDER BY coalesce(updated_at, created_at) DESC LIMIT ?`)
+      .bind(...tagVals, limit)
+      .all<Note>();
     return results;
   }
   // Cocok kalau salah satu kata ada; urutkan berdasarkan jumlah kata yang cocok.
-  const score = words.map(() => "(instr(lower(content || ' ' || coalesce(tags, '')), ?) > 0)").join(" + ");
+  const hay = "lower(coalesce(title, '') || ' ' || content || ' ' || coalesce(tags, ''))";
+  const score = words.map(() => `(instr(${hay}, ?) > 0)`).join(" + ");
   const { results } = await db
-    .prepare(`SELECT *, (${score}) AS score FROM notes WHERE (${score}) > 0 ORDER BY score DESC, id DESC LIMIT ?`)
-    .bind(...words, ...words, limit)
-    .all<{ id: number; content: string; tags: string | null; created_at: string }>();
+    .prepare(
+      `SELECT *, (${score}) AS score FROM notes WHERE (${score}) > 0 AND ${tagWhere} ORDER BY score DESC, id DESC LIMIT ?`,
+    )
+    .bind(...words, ...words, ...tagVals, limit)
+    .all<Note>();
   return results;
+}
+
+export async function noteTags(db: D1Database): Promise<{ tag: string; count: number }[]> {
+  const { results } = await db.prepare("SELECT tags FROM notes WHERE tags IS NOT NULL").all<{ tags: string }>();
+  const counts = new Map<string, number>();
+  for (const r of results) for (const t of r.tags.split(",")) {
+    const k = t.trim();
+    if (k) counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return [...counts].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count);
 }
 
 // --- Riwayat obrolan ---
@@ -180,6 +243,18 @@ export async function appendHistory(db: D1Database, role: "user" | "assistant", 
     // Simpan secukupnya.
     db.prepare("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY id DESC LIMIT 200)"),
   ]);
+}
+
+export async function historyPage(
+  db: D1Database,
+  beforeId: number | null,
+  limit = 50,
+): Promise<{ id: number; role: string; content: string; created_at: string }[]> {
+  const { results } = await db
+    .prepare(`SELECT * FROM history ${beforeId ? "WHERE id < ?" : ""} ORDER BY id DESC LIMIT ?`)
+    .bind(...(beforeId ? [beforeId] : []), limit)
+    .all<{ id: number; role: string; content: string; created_at: string }>();
+  return results;
 }
 
 export async function clearHistory(db: D1Database): Promise<void> {
