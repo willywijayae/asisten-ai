@@ -19,7 +19,8 @@ Aturan kerja:
 - Untuk menandai selesai/membatalkan/mengubah tugas, cari id-nya dulu dengan list_tasks kalau belum tahu, lalu pakai update_task.
 - Kamu tidak punya akses internet umum. Kalau ditanya info terkini, jawab dari pengetahuanmu dan bilang bisa jadi sudah tidak update.
 - Jangan pernah mengaku sudah mengirim email/pesan ke orang lain; kamu hanya bisa membuat draf untuk pemilik.
-- Kalau ada yang ambigu dan penting (misal jam tidak jelas), tetap catat dengan tebakan terbaik lalu sebutkan asumsinya, daripada banyak bertanya.`;
+- Kalau ada yang ambigu dan penting (misal jam tidak jelas), tetap catat dengan tebakan terbaik lalu sebutkan asumsinya, daripada banyak bertanya.
+- WAJIB: setiap permintaan mencatat, menyimpan, mengubah, atau menyelesaikan sesuatu harus dilakukan dengan memanggil tool yang sesuai di giliran ini. Jangan pernah bilang "sudah dicatat/disimpan/diubah" sebelum menerima hasil tool yang sukses. Balasan lama di riwayat obrolan tidak berarti apa pun sudah tersimpan.`;
 
 const GOOGLE_PROMPT = `
 
@@ -365,6 +366,8 @@ const FAST_PROMPT = `
 Kamu adalah model CEPAT. Tangani sendiri pekerjaan rutin: mencatat/mengubah/menyelesaikan tugas, menyimpan & mencari catatan, menjawab pertanyaan singkat, merangkum hal pendek, mengusulkan tugas dari pesan yang diteruskan.
 Panggil tool escalate (sebagai tool PERTAMA, sebelum tool lain) kalau permintaan butuh pemikiran berat, misalnya: analisis atau strategi (bisnis, marketing, keuangan), riset/perbandingan dari banyak sumber, rencana bertahap, menulis dokumen/proposal/email penting yang panjang, merangkum dokumen/email panjang, atau pemilik meminta "pakai opus"/"pikir mendalam". Kalau ragu untuk hal rutin, kerjakan sendiri.`;
 
+const CLAIMS_SAVED = /(ter|di|ku|sudah )(simpan|catat)|sudah (aku |ku)?(ubah|update|tandai|selesaikan|tambah)|draf(t)? (sudah|tersimpan)|✅/i;
+
 /** Pemilik bisa memaksa model ahli dengan menyebutnya di pesan. */
 const wantsSmart = (parts: UserPart[]) =>
   parts.some((p) => p.type === "text" && /(^|\s)\/opus\b|pakai opus|pake opus|mikir (dalam|keras)|pikir mendalam/i.test(p.text));
@@ -409,6 +412,11 @@ export async function runAgent(
   const toolsFor = () => (baseTools && tier === "fast" && usePuter ? [...baseTools, ESCALATE_TOOL] : baseTools);
 
   let modelUsed = "";
+  // Tool yang benar-benar menulis data; dipakai untuk menangkap klaim palsu "sudah disimpan".
+  const WRITE_TOOLS = new Set(["add_task", "propose_tasks", "update_task", "save_note", "drive_save", "gmail_draft"]);
+  let wrote = false;
+  let nudged = false;
+
   let text = "";
   for (let i = 0; i < 8; i++) {
     let msg: ModelMessage;
@@ -432,7 +440,22 @@ export async function runAgent(
     text = cleanText(msg.content);
 
     const calls = msg.tool_calls ?? [];
-    if (!calls.length) break;
+    console.log(`step ${i} model=${modelUsed} tools=[${calls.map((c) => c.function.name).join(",")}]`);
+    if (!calls.length) {
+      // Klaim menyimpan tanpa pernah memanggil tool → minta ulang sekali, kali ini dengan tool.
+      if (opts.useTools && !wrote && !nudged && CLAIMS_SAVED.test(text)) {
+        nudged = true;
+        console.log("Klaim tersimpan tanpa tool, minta ulang");
+        messages.push({ role: "assistant", content: msg.content ?? "" });
+        messages.push({
+          role: "user",
+          content:
+            "[Sistem] Kamu bilang sudah menyimpan/mencatat, tapi belum memanggil tool apa pun, jadi belum ada yang tersimpan. Panggil tool yang sesuai sekarang, lalu jawab ulang pemilik berdasarkan hasilnya.",
+        });
+        continue;
+      }
+      break;
+    }
 
     messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: calls });
     let escalated = false;
@@ -444,6 +467,7 @@ export async function runAgent(
       } else {
         try {
           result = await executeTool(env, ctx, call.function.name, parseArgs(call.function.arguments));
+          if (WRITE_TOOLS.has(call.function.name)) wrote = true;
         } catch (err) {
           result = `ERROR: ${String(err)}`;
         }
