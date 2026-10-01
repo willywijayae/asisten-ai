@@ -232,6 +232,12 @@ export async function listProjects(env: Env) {
 export async function getProject(env: Env, id: number) {
   const p = await env.DB.prepare("SELECT * FROM content_projects WHERE id = ?").bind(id).first<Project>();
   if (!p) return null;
+  // Klip yang dikerjakan Claude di browser tapi tidak kunjung dikirim (sesi terputus) dianggap gagal.
+  await env.DB.prepare(
+    "UPDATE content_clips SET status = 'failed', error = 'Tidak selesai — minta Claude membuat ulang', updated_at = ? WHERE project_id = ? AND status = 'rendering' AND job_id = 'browser' AND updated_at < ?",
+  )
+    .bind(now(), id, new Date(Date.now() - 45 * 60_000).toISOString())
+    .run();
   const { results: clips } = await env.DB.prepare("SELECT * FROM content_clips WHERE project_id = ? ORDER BY provider, scene_no")
     .bind(id)
     .all<Clip>();
@@ -721,4 +727,70 @@ export async function saveProjectNote(env: Env, id: number): Promise<number | nu
   const noteId = await db.addNote(env.DB, { title: `Storyboard: ${p.title}`, content: text, tags: "marketing, konten, studio" });
   await memory.indexNote(env, noteId);
   return noteId;
+}
+
+// --- Pembuatan video oleh Claude di browser pemilik (Claude in Chrome) ---
+// Claude mengambil daftar pekerjaan bertanda tangan, membuat tiap klip di Grok Imagine / ChatGPT memakai
+// akun pemilik, lalu mengunggah videonya ke tautan bertanda tangan (tanpa sesi login).
+
+const BROWSER_JOB_TTL_S = 6 * 3600;
+
+async function signedClipUrl(env: Env, clipId: number, action: "upload" | "status"): Promise<string> {
+  const exp = Math.floor(Date.now() / 1000) + BROWSER_JOB_TTL_S;
+  return `${env.PUBLIC_URL}/api/studio/browser-${action}?clip=${clipId}&exp=${exp}&sig=${await hmac(env, `clip:${clipId}:${action}:${exp}`)}`;
+}
+
+export async function verifyClipSignature(env: Env, url: URL, action: "upload" | "status"): Promise<number | null> {
+  const clipId = Number(url.searchParams.get("clip"));
+  const exp = Number(url.searchParams.get("exp"));
+  const sig = url.searchParams.get("sig") ?? "";
+  if (!clipId || !exp || exp < Date.now() / 1000) return null;
+  return sig === (await hmac(env, `clip:${clipId}:${action}:${exp}`)) ? clipId : null;
+}
+
+/** Daftar pekerjaan untuk ekstensi: prompt, durasi, foto karakter, dan tautan unggah per klip. */
+export async function browserJobs(env: Env, id: number, provider: Provider) {
+  const p = await getProject(env, id);
+  if (!p?.storyboard) throw new Error("Setujui storyboard dulu");
+  if (p.provider !== provider) await buildClips(env, id, provider);
+  const { results: clips } = await env.DB.prepare(
+    "SELECT * FROM content_clips WHERE project_id = ? AND provider = ? ORDER BY scene_no",
+  )
+    .bind(id, provider)
+    .all<Clip>();
+  const todo = clips.filter((c) => !["done", "uploaded"].includes(c.status));
+  if (!todo.length) throw new Error("Semua klip sudah punya video. Hapus/unggah ulang kalau mau membuat lagi.");
+  const imageUrl = p.has_character_image ? await signedMediaUrl(env, `studio:${id}:character`) : null;
+  const jobs = await Promise.all(
+    todo.map(async (c) => ({
+      clipId: c.id,
+      scene: c.scene_no,
+      seconds: c.seconds,
+      prompt: c.prompt,
+      imageUrl,
+      uploadUrl: await signedClipUrl(env, c.id, "upload"),
+      statusUrl: await signedClipUrl(env, c.id, "status"),
+    })),
+  );
+  await env.DB.batch(
+    todo.map((c) =>
+      env.DB.prepare("UPDATE content_clips SET status = 'rendering', job_id = 'browser', error = NULL, updated_at = ? WHERE id = ?").bind(now(), c.id),
+    ),
+  );
+  await logActivity(env, "konten", "start", `Claude membuat ${jobs.length} klip di ${provider === "grok" ? "Grok Imagine" : "ChatGPT"}`, "mboard");
+  return { project: p.title, provider, returnUrl: `${env.PUBLIC_URL}/studio?p=${id}`, jobs };
+}
+
+/** Video dari Claude (browser pemilik) masuk. */
+export async function browserUpload(env: Env, clipId: number, body: ArrayBuffer, type: string): Promise<void> {
+  const c = await env.DB.prepare("SELECT * FROM content_clips WHERE id = ?").bind(clipId).first<Clip>();
+  if (!c) throw new Error("Klip tidak ditemukan");
+  await saveRendered(env, c, body, /^video\//.test(type) ? type : "video/mp4");
+}
+
+/** Claude melaporkan kegagalan satu klip. */
+export async function browserStatus(env: Env, clipId: number, error: string): Promise<void> {
+  await env.DB.prepare("UPDATE content_clips SET status = 'failed', error = ?, updated_at = ? WHERE id = ? AND status = 'rendering'")
+    .bind(`Claude: ${str(error, 400)}`, now(), clipId)
+    .run();
 }

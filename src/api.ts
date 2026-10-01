@@ -91,6 +91,39 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
   const method = req.method;
 
   // Semua request yang mengubah data wajib JSON: form lintas situs tidak bisa mengirim ini tanpa CORS.
+  // Video buatan Claude (di browser pemilik) masuk lewat tautan bertanda tangan, tanpa cookie.
+  if (path === "/studio/browser-upload" || path === "/studio/browser-status") {
+    const action = path.endsWith("upload") ? "upload" : "status";
+    const clipId = await studio.verifyClipSignature(env, url, action);
+    if (!clipId || method !== "POST") return json({ error: "Tautan tidak valid atau kedaluwarsa" }, 403);
+    try {
+      if (action === "upload") await studio.browserUpload(env, clipId, await req.arrayBuffer(), req.headers.get("content-type") ?? "");
+      else await studio.browserStatus(env, clipId, String(((await req.json().catch(() => ({}))) as { error?: string }).error ?? "gagal"));
+      return json({ ok: true });
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  }
+
+  // Akses Claude ke Studio Konten (pakai INGEST_KEY): daftar proyek & pekerjaan video per proyek.
+  if (path === "/studio/agent" && method === "POST") {
+    const key = req.headers.get("x-ingest-key") ?? "";
+    const enc = new TextEncoder();
+    if (!env.INGEST_KEY || key.length !== env.INGEST_KEY.length || !crypto.subtle.timingSafeEqual(enc.encode(key), enc.encode(env.INGEST_KEY))) {
+      throw new HttpError(403, "Kunci salah");
+    }
+    const b = await readJson(req);
+    if (!b.project) return json({ projects: await studio.listProjects(env) });
+    const p = await studio.getProject(env, Number(b.project));
+    if (!p) throw new HttpError(404, "Proyek tidak ditemukan");
+    if (b.action !== "jobs") return json({ project: p });
+    try {
+      return json(await studio.browserJobs(env, p.id, b.provider === "chatgpt" ? "chatgpt" : "grok"));
+    } catch (e) {
+      throw new HttpError(400, e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // Unggahan file (Studio Konten) boleh biner, asal membawa header khusus x-upload: header kustom
   // memicu preflight CORS yang tidak pernah kita izinkan, jadi tetap aman dari CSRF.
   const isUpload = !!req.headers.get("x-upload");

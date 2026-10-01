@@ -802,6 +802,7 @@ function ResultStep({ p, reload }: { p: Project; reload: () => void }) {
   const ready = clips.filter((c) => ["done", "uploaded"].includes(c.status));
   const [playing, setPlaying] = useState<number | null>(null);
   const [charVersion, setCharVersion] = useState(0);
+  const agentPrompt = `Buatkan semua video proyek Studio Konten #${p.id} ("${p.title}") di ${provider === "grok" ? "Grok Imagine" : "ChatGPT (Sora)"} lewat Chrome-ku, lalu kirim hasilnya ke Studio.`;
 
   const switchProvider = async (to: Provider) => {
     try {
@@ -865,6 +866,19 @@ function ResultStep({ p, reload }: { p: Project; reload: () => void }) {
         <a href={PROVIDER_LINK[provider]} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">
           Buka {PROVIDER_NAME[provider]} <ExternalLink className="size-3.5" />
         </a>
+      </Card>
+
+      <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        <Sparkles className="size-5 shrink-0 text-accent" />
+        <div className="min-w-0 flex-1 text-sm">
+          <p className="font-medium">Biar Claude yang membuatkan di browsermu</p>
+          <p className="text-xs text-muted">
+            Butuh Claude desktop + ekstensi Claude in Chrome yang tersambung. Claude membuka {PROVIDER_NAME[provider]} dengan akunmu, menempel prompt
+            tiap adegan, menunggu videonya, lalu mengirimnya ke sini. Kirim perintah ini ke Claude:
+          </p>
+          <p className="mt-1.5 rounded-md bg-surface-2 px-2.5 py-1.5 text-[13px]">{agentPrompt}</p>
+        </div>
+        <CopyButton text={agentPrompt} label="Salin perintah" />
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">

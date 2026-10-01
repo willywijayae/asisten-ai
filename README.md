@@ -49,6 +49,7 @@ Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Teleg
 
 - Menu **Marketing → Studio Konten** (atau tombol **Buat di Studio** di iklan kompetitor). Tiap tahap dikerjakan tim AI (Opus) lewat antrean, divalidasi, bisa diedit, dan harus **disetujui** sebelum tahap berikutnya (pola [Archify](https://github.com/tt-a1i/archify)): **Avatar** (pelanggan + karakter video AI dengan deskripsi konsistensi), **Produk** (angle, 5 hook, jawaban keberatan, klaim yang dihindari), **Storyboard** (adegan ≤ batas klip: Sora 4/8/12 dtk, Grok ≤15 dtk), **Hasil** (prompt per klip).
 - **Hasil video**: mode prompt (gratis — tempel di ChatGPT/Sora atau Grok Imagine, unggah videonya), atau otomatis lewat API kalau secret `OPENAI_API_KEY` (Sora, `sora-2`) / `XAI_API_KEY` (Grok Imagine, butuh foto karakter) diisi. Video disimpan di KV `MEDIA` (≤24 MB/klip), diputar berurutan.
+- **Biar Claude yang membuat (gratis, akun Grok/ChatGPT sendiri)**: dengan Claude desktop + Claude in Chrome, Claude mengambil pekerjaan lewat `POST /api/studio/agent` (header `x-ingest-key`), membuat tiap klip di browser pemilik, lalu mengunggah ke tautan bertanda tangan `/api/studio/browser-upload` (gagal → `/api/studio/browser-status`). Klip yang tidak kunjung dikirim dalam 45 menit ditandai gagal.
 - **Peta alur** gaya Archify (lajur per tahap, klik simpul untuk menelusuri jalur) dan ekspor **IR workflow Archify** (`/api/studio/:id/archify`, lolos `archify validate`) untuk dirender jadi diagram interaktif resmi.
 - Kode: `src/studio.ts`, `web/src/pages/Studio.tsx`.
 
