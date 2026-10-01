@@ -89,7 +89,7 @@ interface RemixFull {
   error: string | null;
   note_id: number | null;
   created_at: string;
-  data: { summary?: string; ideas: RemixIdea[] } | null;
+  data: { model?: string; summary?: string; ideas: RemixIdea[] } | null;
   ad: Ad | null;
 }
 
@@ -385,7 +385,8 @@ function RemixModal({ id, onClose }: { id: number; onClose: () => void }) {
             {r.ad && <AdMedia ad={r.ad} className="aspect-[9/16] w-20 rounded-lg" />}
             <div className="min-w-0 text-sm">
               <p className="text-xs text-muted">
-                Dibuat {SPECIALIST_NAME[r.specialist ?? ""] ?? "tim marketing"} · {fmtWhen(r.created_at)}
+                Dibuat {SPECIALIST_NAME[r.specialist ?? ""] ?? "tim marketing"}
+                {r.data.model ? ` · ditulis ${r.data.model}` : ""} · {fmtWhen(r.created_at)}
               </p>
               {r.data.summary && <p className="mt-1">{r.data.summary}</p>}
             </div>

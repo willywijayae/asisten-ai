@@ -1,7 +1,7 @@
 import type { Env } from "./env";
 import * as profile from "./profile";
 import { clip, logActivity } from "./activity";
-import { runMarketing } from "./marketing";
+import { modelLabel, runMarketing } from "./marketing";
 import { complete } from "./agent";
 import * as db from "./db";
 import * as memory from "./memory";
@@ -968,17 +968,20 @@ export async function runRemix(env: Env, remixId: number): Promise<void> {
   const [owner, context] = await Promise.all([profile.ownerContext(env), memory.autoContext(env, [ad.title, ad.body].filter(Boolean).join(" ").slice(0, 500))]);
 
   let data = null as { summary?: string; ideas?: RemixIdea[] } | null;
+  let model = "";
   try {
     for (let attempt = 0; attempt < 2 && !data?.ideas?.length; attempt++) {
-      const { text } = await complete(env, {
+      // Tulis konten selalu dengan model ahli (Opus); cadangan Gemma hanya kalau Puter tidak tersedia.
+      const res = await complete(env, {
         system: REMIX_PROMPT(specialist) + owner,
         user: `IKLAN ACUAN (kompetitor):\n${reference}${context ? `\n\n${context}` : ""}`,
-        tier: "fast",
+        tier: "smart",
         actor: specialist,
         maxTokens: 7000,
         noThinking: true,
       });
-      data = parseLooseJson(text) as typeof data;
+      model = res.model;
+      data = parseLooseJson(res.text) as typeof data;
     }
   } catch (err) {
     return fail(String(err));
@@ -987,6 +990,7 @@ export async function runRemix(env: Env, remixId: number): Promise<void> {
   if (ideas.length < 3) return fail("Hasil AI tidak lengkap, coba lagi");
 
   const clean = {
+    model: modelLabel(env, model),
     summary: clip(String(data?.summary ?? ""), 500),
     ideas: ideas.map((i) => ({
       title: clip(String(i.title ?? ""), 120),
@@ -1025,13 +1029,13 @@ export async function runRemix(env: Env, remixId: number): Promise<void> {
   await env.DB.prepare("UPDATE competitor_remixes SET status = 'done', data = ?, note_id = ?, done_at = ? WHERE id = ?")
     .bind(JSON.stringify(clean), noteId, new Date().toISOString(), remixId)
     .run();
-  await logActivity(env, specialist, "done", `${clean.ideas.length} konten mirip iklan ${ad.page_name ?? ""} siap (catatan #${noteId})`);
+  await logActivity(env, specialist, "done", `${clean.ideas.length} konten mirip iklan ${ad.page_name ?? ""} siap (${clean.model}, catatan #${noteId})`);
   await logActivity(env, "manajer_marketing", "done", `Menerima ${clean.ideas.length} konten dari ${name}`);
   if (env.OWNER_CHAT_ID) {
     await new Telegram(env.TELEGRAM_BOT_TOKEN)
       .send(
         env.OWNER_CHAT_ID,
-        `✍️ ${name} selesai: ${clean.ideas.length} konten mirip iklan ${ad.page_name ?? ""}.\n${clean.ideas
+        `✍️ ${name} (${clean.model}) selesai: ${clean.ideas.length} konten mirip iklan ${ad.page_name ?? ""}.\n${clean.ideas
           .map((i, n) => `${n + 1}. ${i.title} — "${clip(i.hook, 90)}"`)
           .join("\n")}\n\nNaskah & caption lengkap: website → Riset Kompetitor → Konten tim.`,
       )

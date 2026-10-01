@@ -151,7 +151,12 @@ export function Office({ onChanged }: { onChanged: () => void }) {
       setReviewing(false);
     }
   };
-  const modelOf = (id: AgentId) => (id === "haiku" || id === "opus" || id === "gemma" ? data?.models[id] : null);
+  const modelOf = (id: AgentId) =>
+    id === "haiku" || id === "opus" || id === "gemma"
+      ? data?.models[id]
+      : id === "copywriter" || id === "konten" || id === "ceo"
+        ? data?.models.opus
+        : null;
 
   return (
     <div>

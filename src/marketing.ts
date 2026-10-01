@@ -45,6 +45,16 @@ Tugas: riset pasar, kompetitor, persona & insight audiens, positioning, angle pe
 } as const;
 
 export type SpecialistId = keyof typeof SPECIALISTS;
+
+/** Penulis konten (copy & naskah) selalu pakai model ahli (Opus); analis & riset cukup model cepat. */
+export const CONTENT_WRITERS: SpecialistId[] = ["copywriter", "konten"];
+
+/** Nama pendek model untuk ditampilkan ke pemilik. */
+export function modelLabel(env: Env, model: string): string {
+  if (model === env.MODEL_SMART) return "Opus";
+  if (model === env.MODEL_FAST) return "Haiku";
+  return "Gemma (cadangan)";
+}
 export const SPECIALIST_IDS = Object.keys(SPECIALISTS) as SpecialistId[];
 
 const TEAM_RULES = `
@@ -80,8 +90,9 @@ export async function runMarketing(
     result = await complete(env, {
       system: sp.brief + TEAM_RULES + owner,
       user: `Tugas dari Manajer Marketing (permintaan pemilik):\n${request}${context ? `\n\n${context}` : ""}${history}`,
-      tier: "fast",
+      tier: CONTENT_WRITERS.includes(id) ? "smart" : "fast",
       actor: id,
+      maxTokens: CONTENT_WRITERS.includes(id) ? 6000 : undefined,
     });
   } catch (err) {
     await logActivity(env, id, "error", `Gagal mengerjakan: ${String(err)}`);
@@ -94,7 +105,7 @@ export async function runMarketing(
     tags: `marketing, ${id}`,
   });
   await memory.indexNote(env, noteId);
-  await logActivity(env, id, "done", `Selesai → catatan #${noteId}: ${clip(result.text, 120)}`);
+  await logActivity(env, id, "done", `Selesai (${modelLabel(env, result.model)}) → catatan #${noteId}: ${clip(result.text, 120)}`);
   await logActivity(env, "manajer_marketing", "done", `Menerima hasil ${sp.name} (catatan #${noteId})`);
-  return { text: result.text, noteId, name: sp.name };
+  return { text: result.text, noteId, name: `${sp.name} · ${modelLabel(env, result.model)}` };
 }
