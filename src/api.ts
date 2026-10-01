@@ -319,6 +319,21 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
   if (mediaMatch && method === "GET") {
     return competitors.serveMedia(env, mediaMatch[1], Number(mediaMatch[2]), mediaMatch[3] as "image" | "poster" | "video", req);
   }
+  const remixAdMatch = /^\/competitors\/ads\/(\d+)\/remix$/.exec(path);
+  if (remixAdMatch && method === "POST") {
+    try {
+      return json(await competitors.requestRemix(env, remixAdMatch[1]), 202);
+    } catch (e) {
+      throw new HttpError(404, e instanceof Error ? e.message : String(e));
+    }
+  }
+  if (path === "/competitors/remixes" && method === "GET") return json({ remixes: await competitors.listRemixes(env) });
+  const remixMatch = /^\/competitors\/remixes\/(\d+)$/.exec(path);
+  if (remixMatch && method === "GET") {
+    const r = await competitors.getRemix(env, Number(remixMatch[1]));
+    if (!r) throw new HttpError(404, "Tidak ditemukan");
+    return json(r);
+  }
   if (path === "/competitors/reports" && method === "GET") return json({ reports: await competitors.listReports(env) });
   if (path === "/competitors/reports" && method === "POST") {
     const { query } = await readJson(req);

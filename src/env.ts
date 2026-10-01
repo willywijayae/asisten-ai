@@ -1,9 +1,12 @@
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
 import type { TgUpdate } from "./telegram";
 
+/** Pesan antrean: update Telegram, atau pekerjaan latar belakang yang lama (mis. bikin konten). */
+export type JobMessage = TgUpdate | { type: "remix"; remixId: number };
+
 export interface Env {
   DB: D1Database;
-  JOBS: Queue<TgUpdate>;
+  JOBS: Queue<JobMessage>;
   AI: Ai;
   /** Indeks vektor memori jangka panjang & catatan. */
   VECTORIZE: Vectorize;

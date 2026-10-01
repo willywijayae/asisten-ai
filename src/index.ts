@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import type { Env } from "./env";
+import type { Env, JobMessage } from "./env";
 import * as db from "./db";
 import { puterPing, runAgent, type UserPart } from "./agent";
 import { Telegram, type TgCallbackQuery, type TgMessage, type TgUpdate } from "./telegram";
@@ -8,7 +8,7 @@ import { sendBriefing } from "./briefing";
 import { clip, logActivity, pruneActivity } from "./activity";
 import { extractMemories, reindexAll } from "./memory";
 import { weeklyReview } from "./ceo";
-import { saveMedia, scorePending } from "./competitors";
+import { runRemix, saveMedia, scorePending } from "./competitors";
 import { handleApi } from "./api";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp";
@@ -103,8 +103,14 @@ const app = {
     return new Response("asisten-ai jalan ✅");
   },
 
-  async queue(batch: MessageBatch<TgUpdate>, env: Env): Promise<void> {
-    for (const msg of batch.messages) {
+  async queue(batch: MessageBatch<JobMessage>, env: Env): Promise<void> {
+    for (const raw of batch.messages) {
+      if ("type" in raw.body && raw.body.type === "remix") {
+        await runRemix(env, raw.body.remixId).catch((err) => console.error("Remix gagal", err));
+        raw.ack();
+        continue;
+      }
+      const msg = raw as Message<TgUpdate>;
       try {
         if (await db.claimUpdate(env.DB, msg.body.update_id)) await handleUpdate(env, msg.body);
       } catch (err) {
@@ -138,7 +144,7 @@ const app = {
     else if (event.cron === "0 14 * * *") await sendBriefing(env, "evening");
     else if (event.cron === "0 13 * * SUN") await weeklyReview(env);
   },
-} satisfies ExportedHandler<Env, TgUpdate>;
+} satisfies ExportedHandler<Env, JobMessage>;
 
 // OAuthProvider membungkus fetch: /mcp butuh token OAuth yang disetujui pemilik; /.well-known/*, /oauth/token,
 // dan /oauth/register dilayani library; sisanya (website, API, webhook Telegram) diteruskan ke `app`.
@@ -167,7 +173,7 @@ export default {
   fetch: (req, env, ctx) => oauthProvider(env).fetch(req, env, ctx),
   queue: app.queue,
   scheduled: app.scheduled,
-} satisfies ExportedHandler<Env, TgUpdate>;
+} satisfies ExportedHandler<Env, JobMessage>;
 
 function isOwner(env: Env, chatId: number): boolean {
   return !!env.OWNER_CHAT_ID && String(chatId) === env.OWNER_CHAT_ID;

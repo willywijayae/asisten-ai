@@ -517,7 +517,10 @@ export async function listAds(
             ? "coalesce(duplicates, 1) DESC, days DESC"
             : "days DESC, first_seen DESC";
   const { results } = await env.DB.prepare(
-    `SELECT *, ${DAYS_RUNNING} AS days FROM competitor_ads ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${order} LIMIT ?`,
+    `SELECT *, ${DAYS_RUNNING} AS days,
+       (SELECT id FROM competitor_remixes r WHERE r.ad_id = competitor_ads.id ORDER BY r.id DESC LIMIT 1) AS remix_id,
+       (SELECT status FROM competitor_remixes r WHERE r.ad_id = competitor_ads.id ORDER BY r.id DESC LIMIT 1) AS remix_status
+     FROM competitor_ads ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${order} LIMIT ?`,
   )
     .bind(...vals, Math.min(f.limit ?? 100, 300))
     .all<CompetitorAd & { days: number }>();
@@ -776,7 +779,12 @@ export async function getReport(env: Env, id: number) {
   const ids = data.winners.map((w) => w.ad_id).filter(Boolean);
   const ads = ids.length
     ? (
-        await env.DB.prepare(`SELECT *, ${DAYS_RUNNING} AS days FROM competitor_ads WHERE id IN (${ids.map(() => "?").join(",")})`)
+        await env.DB.prepare(
+          `SELECT *, ${DAYS_RUNNING} AS days,
+             (SELECT id FROM competitor_remixes r WHERE r.ad_id = competitor_ads.id ORDER BY r.id DESC LIMIT 1) AS remix_id,
+             (SELECT status FROM competitor_remixes r WHERE r.ad_id = competitor_ads.id ORDER BY r.id DESC LIMIT 1) AS remix_status
+           FROM competitor_ads WHERE id IN (${ids.map(() => "?").join(",")})`,
+        )
           .bind(...ids)
           .all<CompetitorAd & { days: number }>()
       ).results
@@ -858,4 +866,191 @@ function parseLooseJson(text: string): unknown {
     }
   }
   return null;
+}
+
+// --- "Bikin 5 konten mirip": tim marketing meniru pola iklan pemenang untuk brand pemilik ---
+
+export interface RemixIdea {
+  title: string;
+  angle: string;
+  format: string;
+  hook: string;
+  scenes?: { time?: string; visual: string; voiceover?: string; text?: string }[];
+  caption: string;
+  cta: string;
+  production?: string;
+}
+
+export interface Remix {
+  id: number;
+  ad_id: string;
+  status: "pending" | "done" | "error";
+  specialist: string | null;
+  data: string | null;
+  note_id: number | null;
+  error: string | null;
+  created_at: string;
+  done_at: string | null;
+}
+
+const REMIX_COUNT = 5;
+
+/** Antrekan pembuatan konten (dikerjakan consumer antrean: boleh lama, tidak tergantung browser). */
+export async function requestRemix(env: Env, adId: string): Promise<Remix> {
+  const ad = await env.DB.prepare("SELECT id, page_name, media_type FROM competitor_ads WHERE id = ?")
+    .bind(adId)
+    .first<{ id: string; page_name: string | null; media_type: string | null }>();
+  if (!ad) throw new Error("Iklan tidak ditemukan");
+  const running = await env.DB.prepare(
+    "SELECT * FROM competitor_remixes WHERE ad_id = ? AND status = 'pending' AND created_at > ?",
+  )
+    .bind(adId, new Date(Date.now() - 15 * 60_000).toISOString())
+    .first<Remix>();
+  if (running) return running;
+
+  const specialist = ad.media_type === "video" ? "konten" : "copywriter";
+  const row = await env.DB.prepare("INSERT INTO competitor_remixes (ad_id, specialist) VALUES (?, ?) RETURNING *")
+    .bind(adId, specialist)
+    .first<Remix>();
+  await logActivity(
+    env,
+    "manajer_marketing",
+    "step",
+    `Menugaskan ${specialist === "konten" ? "Perencana Konten" : "Copywriter"}: ${REMIX_COUNT} konten mirip iklan ${ad.page_name ?? adId}`,
+    `visit:${specialist}`,
+  );
+  await env.JOBS.send({ type: "remix", remixId: row!.id });
+  return row!;
+}
+
+const REMIX_PROMPT = (specialist: string) => `Kamu ${specialist === "konten" ? "Perencana Konten (video)" : "Copywriter iklan"} di tim marketing pemilik, ditugaskan Manajer Marketing.
+Tugas: pelajari iklan kompetitor yang terbukti jalan di bawah, lalu buat MINIMAL ${REMIX_COUNT} konten iklan BARU untuk bisnis/produk pemilik yang meniru POLA pemenangnya (struktur hook, angle, format, panjang, emosi, CTA) — bukan menyalin kata-katanya.
+- Variasikan: tiap konten beda sudut (mis. hook usia, durasi masalah, reframe, testimoni, penjawab keberatan, harga), tapi tetap satu pola dengan iklan acuan.
+- Untuk video: tulis naskah per adegan (detik, visual, voice over, teks di layar) dengan panjang mirip iklan acuan; talent realistis (CS/penjual/pelanggan) dan murah diproduksi.
+- Untuk gambar/teks: tulis konsep visual + headline + teks gambar.
+- Caption lengkap siap pakai: hook → agitasi singkat → solusi → manfaat checklist → bukti (BPOM/Halal/testimoni bila relevan) → CTA.
+- WAJIB aman kebijakan Meta & BPOM: tanpa klaim menyembuhkan/menjamin hasil, tanpa klaim pelangsingan, tanpa konten seksual eksplisit, tanpa before-after; pakai "membantu menjaga…" dan testimoni.
+
+Balas HANYA JSON:
+{"summary":"1-2 kalimat: pola apa yang ditiru dari iklan acuan",
+ "ideas":[{"title":"nama konsep","angle":"...","format":"video 45 detik talking head / gambar statis / carousel …","hook":"kalimat pembuka / headline",
+   "scenes":[{"time":"0-3s","visual":"...","voiceover":"...","text":"teks di layar"}],
+   "caption":"caption iklan lengkap","cta":"…","production":"talent, properti, catatan produksi"}]}
+(scenes boleh kosong untuk gambar). Bahasa Indonesia.`;
+
+/** Dikerjakan consumer antrean. */
+export async function runRemix(env: Env, remixId: number): Promise<void> {
+  const remix = await env.DB.prepare("SELECT * FROM competitor_remixes WHERE id = ?").bind(remixId).first<Remix>();
+  if (!remix || remix.status !== "pending") return;
+  const ad = await env.DB.prepare(`SELECT *, ${DAYS_RUNNING} AS days FROM competitor_ads WHERE id = ?`)
+    .bind(remix.ad_id)
+    .first<CompetitorAd & { days: number }>();
+  const specialist = (remix.specialist ?? "copywriter") as "konten" | "copywriter";
+  const name = specialist === "konten" ? "Perencana Konten" : "Copywriter";
+  const fail = async (message: string) => {
+    await env.DB.prepare("UPDATE competitor_remixes SET status = 'error', error = ?, done_at = ? WHERE id = ?")
+      .bind(message.slice(0, 500), new Date().toISOString(), remixId)
+      .run();
+    await logActivity(env, specialist, "error", `Gagal membuat konten: ${message}`);
+  };
+  if (!ad) return fail("Iklan acuan sudah tidak ada");
+
+  await logActivity(env, specialist, "start", `Membuat ${REMIX_COUNT} konten mirip iklan ${ad.page_name ?? ""}`, "mboard");
+  const reference = [
+    `Halaman: ${ad.page_name} · tayang ${ad.days} hari${ad.active ? " (masih aktif)" : ""} · urutan impresi ${ad.impression_rank ?? "?"} · ${ad.duplicates ?? 1} duplikat`,
+    `Format: ${ad.media_type ?? "?"}${ad.video_duration ? ` ${ad.video_duration}` : ""} · CTA: ${ad.cta ?? "?"} · landing: ${ad.link_url ?? "?"}`,
+    ad.angle ? `Angle (penilaian kami): ${ANGLES[ad.angle] ?? ad.angle}` : "",
+    ad.title ? `Judul link: ${ad.title}` : "",
+    `Teks iklan:\n${ad.body ?? "(tidak ada teks — iklan visual)"}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const [owner, context] = await Promise.all([profile.ownerContext(env), memory.autoContext(env, [ad.title, ad.body].filter(Boolean).join(" ").slice(0, 500))]);
+
+  let data = null as { summary?: string; ideas?: RemixIdea[] } | null;
+  try {
+    for (let attempt = 0; attempt < 2 && !data?.ideas?.length; attempt++) {
+      const { text } = await complete(env, {
+        system: REMIX_PROMPT(specialist) + owner,
+        user: `IKLAN ACUAN (kompetitor):\n${reference}${context ? `\n\n${context}` : ""}`,
+        tier: "fast",
+        actor: specialist,
+        maxTokens: 7000,
+        noThinking: true,
+      });
+      data = parseLooseJson(text) as typeof data;
+    }
+  } catch (err) {
+    return fail(String(err));
+  }
+  const ideas = (data?.ideas ?? []).filter((i) => i && i.hook && i.caption).slice(0, 10);
+  if (ideas.length < 3) return fail("Hasil AI tidak lengkap, coba lagi");
+
+  const clean = {
+    summary: clip(String(data?.summary ?? ""), 500),
+    ideas: ideas.map((i) => ({
+      title: clip(String(i.title ?? ""), 120),
+      angle: clip(String(i.angle ?? ""), 160),
+      format: clip(String(i.format ?? ""), 160),
+      hook: String(i.hook ?? "").slice(0, 400),
+      scenes: Array.isArray(i.scenes)
+        ? i.scenes.slice(0, 12).map((s) => ({
+            time: s?.time ? clip(String(s.time), 20) : undefined,
+            visual: String(s?.visual ?? "").slice(0, 400),
+            voiceover: s?.voiceover ? String(s.voiceover).slice(0, 500) : undefined,
+            text: s?.text ? String(s.text).slice(0, 200) : undefined,
+          }))
+        : [],
+      caption: String(i.caption ?? "").slice(0, 2500),
+      cta: clip(String(i.cta ?? ""), 80),
+      production: i.production ? String(i.production).slice(0, 600) : undefined,
+    })),
+  };
+  const noteText = [
+    `Acuan: ${ad.page_name} — https://www.facebook.com/ads/library/?id=${ad.id}`,
+    clean.summary,
+    ...clean.ideas.map(
+      (i, n) =>
+        `\n${n + 1}. ${i.title} (${i.format})\nAngle: ${i.angle}\nHook: ${i.hook}\n${(i.scenes ?? [])
+          .map((s) => `- ${s.time ?? ""} ${s.visual}${s.voiceover ? ` | VO: ${s.voiceover}` : ""}${s.text ? ` | Teks: ${s.text}` : ""}`)
+          .join("\n")}\nCaption:\n${i.caption}\nCTA: ${i.cta}${i.production ? `\nProduksi: ${i.production}` : ""}`,
+    ),
+  ].join("\n");
+  const noteId = await db.addNote(env.DB, {
+    title: `${clean.ideas.length} konten mirip iklan ${ad.page_name ?? ad.id}`,
+    content: noteText,
+    tags: `marketing, ${specialist}, kompetitor`,
+  });
+  await memory.indexNote(env, noteId);
+  await env.DB.prepare("UPDATE competitor_remixes SET status = 'done', data = ?, note_id = ?, done_at = ? WHERE id = ?")
+    .bind(JSON.stringify(clean), noteId, new Date().toISOString(), remixId)
+    .run();
+  await logActivity(env, specialist, "done", `${clean.ideas.length} konten mirip iklan ${ad.page_name ?? ""} siap (catatan #${noteId})`);
+  await logActivity(env, "manajer_marketing", "done", `Menerima ${clean.ideas.length} konten dari ${name}`);
+  if (env.OWNER_CHAT_ID) {
+    await new Telegram(env.TELEGRAM_BOT_TOKEN)
+      .send(
+        env.OWNER_CHAT_ID,
+        `✍️ ${name} selesai: ${clean.ideas.length} konten mirip iklan ${ad.page_name ?? ""}.\n${clean.ideas
+          .map((i, n) => `${n + 1}. ${i.title} — "${clip(i.hook, 90)}"`)
+          .join("\n")}\n\nNaskah & caption lengkap: website → Riset Kompetitor → Konten tim.`,
+      )
+      .catch((err) => console.error("Gagal kirim notifikasi remix", err));
+  }
+}
+
+export async function getRemix(env: Env, id: number) {
+  const r = await env.DB.prepare("SELECT * FROM competitor_remixes WHERE id = ?").bind(id).first<Remix>();
+  if (!r) return null;
+  const ad = await env.DB.prepare(`SELECT *, ${DAYS_RUNNING} AS days FROM competitor_ads WHERE id = ?`).bind(r.ad_id).first();
+  return { ...r, data: r.data ? JSON.parse(r.data) : null, ad };
+}
+
+export async function listRemixes(env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT r.id, r.ad_id, r.status, r.specialist, r.note_id, r.error, r.created_at, r.done_at,
+            json_array_length(json_extract(r.data, '$.ideas')) AS ideas, a.page_name, a.media_type
+     FROM competitor_remixes r LEFT JOIN competitor_ads a ON a.id = r.ad_id ORDER BY r.id DESC LIMIT 50`,
+  ).all();
+  return results;
 }

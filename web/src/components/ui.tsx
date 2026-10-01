@@ -84,11 +84,14 @@ export function Modal({
   onClose,
   children,
   footer,
+  wide,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  /** Lebar untuk konten panjang (naskah, laporan). */
+  wide?: boolean;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -108,7 +111,7 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         onMouseDown={(e) => e.stopPropagation()}
-        className="flex max-h-[92vh] w-full flex-col rounded-t-2xl border border-line bg-surface shadow-xl sm:max-w-lg sm:rounded-2xl"
+        className={`flex max-h-[92vh] w-full flex-col rounded-t-2xl border border-line bg-surface shadow-xl sm:rounded-2xl ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"}`}
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <h3 className="text-sm font-semibold">{title}</h3>

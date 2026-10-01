@@ -8,7 +8,9 @@ import {
   FileText,
   Gauge,
   Image as ImageIcon,
+  Loader2,
   Megaphone,
+  PenLine,
   Play,
   Plus,
   Search,
@@ -19,7 +21,7 @@ import {
 import { api } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import { fmtDate, fmtWhen } from "../lib/time";
-import { Badge, Button, Card, Empty, PageHeader, SectionTitle, Spinner } from "../components/ui";
+import { Badge, Button, Card, Empty, Modal, PageHeader, SectionTitle, Spinner } from "../components/ui";
 import { useToast } from "../components/app-context";
 
 const ANGLES: Record<string, string> = {
@@ -64,7 +66,34 @@ interface Ad {
   impression_rank: number | null;
   video_duration: string | null;
   days: number;
+  remix_id?: number | null;
+  remix_status?: "pending" | "done" | "error" | null;
 }
+
+interface RemixIdea {
+  title: string;
+  angle: string;
+  format: string;
+  hook: string;
+  scenes?: { time?: string; visual: string; voiceover?: string; text?: string }[];
+  caption: string;
+  cta: string;
+  production?: string;
+}
+
+interface RemixFull {
+  id: number;
+  ad_id: string;
+  status: "pending" | "done" | "error";
+  specialist: string | null;
+  error: string | null;
+  note_id: number | null;
+  created_at: string;
+  data: { summary?: string; ideas: RemixIdea[] } | null;
+  ad: Ad | null;
+}
+
+const SPECIALIST_NAME: Record<string, string> = { konten: "Perencana Konten", copywriter: "Copywriter" };
 
 interface Summary {
   totals: { ads: number; active: number; pages: number; newWeek: number; unscored: number };
@@ -257,14 +286,181 @@ function AdCard({ ad }: { ad: Ad }) {
             </a>
           )}
         </div>
+        <RemixButton ad={ad} className="mt-3" />
       </div>
     </Card>
   );
 }
 
+/** Tombol "Bikin 5 konten mirip" → Manajer Marketing menugaskan spesialis; status dipantau sampai selesai. */
+function RemixButton({ ad, className = "" }: { ad: Ad; className?: string }) {
+  const toast = useToast();
+  const [state, setState] = useState<{ id: number | null; status: Ad["remix_status"] }>({ id: ad.remix_id ?? null, status: ad.remix_status ?? null });
+  const [open, setOpen] = useState(false);
+
+  // Pantau pekerjaan yang sedang berjalan.
+  useEffect(() => {
+    if (state.status !== "pending" || !state.id) return;
+    const t = setInterval(async () => {
+      try {
+        const r = await api<RemixFull>(`/competitors/remixes/${state.id}`);
+        if (r.status !== "pending") {
+          setState({ id: r.id, status: r.status });
+          if (r.status === "done") toast.ok(`${r.data?.ideas.length ?? 5} konten mirip iklan ${ad.page_name ?? ""} siap`);
+          else toast.error(r.error ?? "Gagal membuat konten");
+        }
+      } catch {
+        /* coba lagi di putaran berikutnya */
+      }
+    }, 5000);
+    return () => clearInterval(t);
+  }, [state, ad.page_name, toast]);
+
+  const start = async () => {
+    try {
+      const r = await api<RemixFull>(`/competitors/ads/${ad.id}/remix`, { body: {} });
+      setState({ id: r.id, status: r.status });
+      toast.ok(`Manajer Marketing menugaskan ${SPECIALIST_NAME[r.specialist ?? ""] ?? "tim"} — sekitar 1 menit`);
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+
+  return (
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+      {state.status === "done" && state.id ? (
+        <>
+          <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
+            <PenLine className="size-3.5" /> Lihat konten tim
+          </Button>
+          <Button size="sm" variant="ghost" onClick={start}>
+            <Sparkles className="size-3.5" /> Bikin lagi
+          </Button>
+        </>
+      ) : state.status === "pending" ? (
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-accent-soft px-2.5 py-1.5 text-xs font-medium text-accent">
+          <Loader2 className="size-3.5 animate-spin" /> Tim marketing sedang membuat 5 konten…
+        </span>
+      ) : (
+        <Button size="sm" variant={state.status === "error" ? "danger" : "secondary"} onClick={start}>
+          <Sparkles className="size-3.5" /> {state.status === "error" ? "Gagal — coba lagi" : "Bikin 5 konten mirip"}
+        </Button>
+      )}
+      {open && state.id && <RemixModal id={state.id} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const toast = useToast();
+  return (
+    <button
+      className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-fg"
+      onClick={() => navigator.clipboard.writeText(text).then(() => toast.ok("Disalin"))}
+    >
+      <Copy className="size-3" /> Salin
+    </button>
+  );
+}
+
+/** Hasil konten tim: naskah per adegan + caption siap salin. */
+function RemixModal({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data: r, error } = useLoad(() => api<RemixFull>(`/competitors/remixes/${id}`), [id]);
+  return (
+    <Modal
+      wide
+      title={r?.ad ? `Konten mirip iklan ${r.ad.page_name ?? ""}` : "Konten tim marketing"}
+      onClose={onClose}
+      footer={r?.note_id ? <span className="mr-auto text-xs text-muted">Tersimpan di Second Brain sebagai catatan #{r.note_id}</span> : undefined}
+    >
+      {error ? (
+        <Empty title="Gagal memuat" hint={error} />
+      ) : !r ? (
+        <Spinner />
+      ) : !r.data ? (
+        <Empty title={r.status === "pending" ? "Masih dikerjakan…" : "Belum ada hasil"} hint={r.error ?? undefined} />
+      ) : (
+        <div className="space-y-4">
+          <div className="flex gap-3">
+            {r.ad && <AdMedia ad={r.ad} className="aspect-[9/16] w-20 rounded-lg" />}
+            <div className="min-w-0 text-sm">
+              <p className="text-xs text-muted">
+                Dibuat {SPECIALIST_NAME[r.specialist ?? ""] ?? "tim marketing"} · {fmtWhen(r.created_at)}
+              </p>
+              {r.data.summary && <p className="mt-1">{r.data.summary}</p>}
+            </div>
+          </div>
+          {r.data.ideas.map((idea, i) => {
+            const full = `${idea.hook}\n\n${idea.caption}\n\n${idea.cta}`;
+            return (
+              <Card key={i} className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">
+                      {i + 1}. {idea.title}
+                    </p>
+                    <p className="text-[11px] text-muted">
+                      {idea.format} · {idea.angle}
+                    </p>
+                  </div>
+                  <CopyButton text={full} />
+                </div>
+                <p className="mt-2 rounded-md bg-accent-soft px-2.5 py-1.5 text-sm font-medium text-accent">“{idea.hook}”</p>
+                {!!idea.scenes?.length && (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-line text-left text-muted">
+                          <th className="py-1 pr-2 font-medium">Detik</th>
+                          <th className="py-1 pr-2 font-medium">Visual</th>
+                          <th className="py-1 pr-2 font-medium">Voice over</th>
+                          <th className="py-1 font-medium">Teks layar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {idea.scenes.map((s, j) => (
+                          <tr key={j} className="border-b border-line/60 align-top">
+                            <td className="whitespace-nowrap py-1.5 pr-2 text-muted">{s.time}</td>
+                            <td className="py-1.5 pr-2">{s.visual}</td>
+                            <td className="py-1.5 pr-2">{s.voiceover}</td>
+                            <td className="py-1.5">{s.text}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="mt-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-muted">Caption</span>
+                    <CopyButton text={idea.caption} />
+                  </div>
+                  <p className="whitespace-pre-line rounded-md bg-surface-2 p-2.5 text-[13px]">{idea.caption}</p>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                  <span>
+                    <b>CTA:</b> {idea.cta}
+                  </span>
+                  {idea.production && (
+                    <span className="text-muted">
+                      <b className="text-fg">Produksi:</b> {idea.production}
+                    </span>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function Competitors() {
   const params = new URLSearchParams(window.location.search);
-  const [tab, setTab] = useState<"iklan" | "laporan">(params.get("laporan") ? "laporan" : "iklan");
+  const [tab, setTab] = useState<"iklan" | "laporan" | "konten">(
+    params.get("laporan") ? "laporan" : params.get("konten") ? "konten" : "iklan",
+  );
   const { data: sum, error, reload: reloadSum } = useLoad(() => api<Summary>("/competitors"), []);
 
   if (error) return <Empty title="Gagal memuat riset kompetitor" hint={error} />;
@@ -281,6 +477,7 @@ export function Competitors() {
           [
             ["iklan", "Galeri iklan", Megaphone],
             ["laporan", "Laporan bedah iklan", FileText],
+            ["konten", "Konten tim", PenLine],
           ] as const
         ).map(([key, label, Icon]) => (
           <button
@@ -294,7 +491,7 @@ export function Competitors() {
           </button>
         ))}
       </div>
-      {tab === "iklan" ? <Gallery sum={sum} reloadSum={reloadSum} /> : <Reports sum={sum} />}
+      {tab === "iklan" ? <Gallery sum={sum} reloadSum={reloadSum} /> : tab === "laporan" ? <Reports sum={sum} /> : <TeamContent />}
     </>
   );
 }
@@ -736,6 +933,7 @@ function ReportView({ id }: { id: number }) {
                 >
                   Lihat di Ad Library →
                 </a>
+                {ad && <RemixButton ad={ad} className="mt-2" />}
               </div>
             </div>
           );
@@ -900,5 +1098,78 @@ function WatchList({ items, onChanged }: { items: Summary["watch"]; onChanged: (
         </form>
       </Card>
     </section>
+  );
+}
+
+/** Semua konten yang dibuat tim marketing dari iklan kompetitor. */
+function TeamContent() {
+  const { data, reload } = useLoad(
+    () =>
+      api<{
+        remixes: {
+          id: number;
+          ad_id: string;
+          status: string;
+          specialist: string | null;
+          ideas: number | null;
+          page_name: string | null;
+          media_type: string | null;
+          created_at: string;
+          error: string | null;
+        }[];
+      }>("/competitors/remixes"),
+    [],
+  );
+  const [open, setOpen] = useState<number | null>(null);
+  useEffect(() => {
+    if (!data?.remixes.some((r) => r.status === "pending")) return;
+    const t = setInterval(reload, 5000);
+    return () => clearInterval(t);
+  }, [data, reload]);
+
+  if (!data) return <Spinner />;
+  if (!data.remixes.length)
+    return (
+      <Card>
+        <Empty
+          icon={<PenLine className="size-6" />}
+          title="Belum ada konten"
+          hint='Klik "Bikin 5 konten mirip" di iklan kompetitor mana pun — Manajer Marketing akan menugaskan Copywriter atau Perencana Konten.'
+        />
+      </Card>
+    );
+  return (
+    <>
+      <Card className="divide-y divide-line">
+        {data.remixes.map((r) => (
+          <button
+            key={r.id}
+            disabled={r.status !== "done"}
+            onClick={() => setOpen(r.id)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition hover:bg-surface-2 disabled:cursor-default disabled:hover:bg-transparent"
+          >
+            <PenLine className="size-4 shrink-0 text-muted" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium">
+                {r.status === "done" ? `${r.ideas ?? 5} konten` : "Konten"} mirip iklan {r.page_name ?? r.ad_id}
+              </span>
+              <span className="text-[11px] text-muted">
+                {SPECIALIST_NAME[r.specialist ?? ""] ?? "Tim marketing"} · {r.media_type ?? "iklan"} · {fmtWhen(r.created_at)}
+              </span>
+            </span>
+            {r.status === "pending" ? (
+              <Badge tone="accent">
+                <Loader2 className="size-3 animate-spin" /> Dikerjakan
+              </Badge>
+            ) : r.status === "error" ? (
+              <Badge tone="danger">Gagal</Badge>
+            ) : (
+              <Badge tone="ok">Siap</Badge>
+            )}
+          </button>
+        ))}
+      </Card>
+      {open && <RemixModal id={open} onClose={() => setOpen(null)} />}
+    </>
   );
 }

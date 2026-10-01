@@ -40,6 +40,7 @@ Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Teleg
   - **Claude dengan browser**: sama, ke `/impor-iklan#k=<INGEST_KEY>&d=...` atau tool MCP `save_competitor_ads`. Laporan bedah iklan lengkap disimpan dengan `save_competitor_report` (atau field `report` di ingest).
   - Tanpa browser: `ads_library_search` dari konektor Meta (tanpa media). Endpoint mentah: `POST /api/competitors/ingest` + header `x-ingest-key`.
 - **Media**: gambar & sampul video disalin ke KV `MEDIA` (link Facebook kedaluwarsa); video iklan pemenang (impresi ≤10 / duplikat ≥3 / tayang ≥60 hari, ≤20 MB) juga disalin. Video lain diputar dari link terbaru (diperbarui tiap scan). Dicicil di cron 5 menit (batas 50 subrequest).
+- **"Bikin 5 konten mirip"** di setiap iklan (galeri & laporan): Manajer Marketing menugaskan Perencana Konten (iklan video → naskah per adegan) atau Copywriter (gambar/teks) lewat antrean `JOBS` (`{type:"remix"}`), hasilnya minimal 5 konten (hook, naskah, caption, CTA, catatan produksi) di tab **Konten tim**, jadi catatan, dan dikabarkan ke Telegram.
 - **Laporan bedah iklan** (tab Laporan): ringkasan, peta topik, pemenang dengan video, pola hook, peringatan klaim, rencana prioritas. Dibuat agen Riset (tombol) atau dikirim Claude.
 - **Penilaian**: [Jev AI](https://jev-ai.pro) kalau secret `JEV_API_KEY` diisi (`npx wrangler secret put JEV_API_KEY`); kalau kredit habis (402) / key salah → otomatis dinilai tim AI (Workers AI, gratis), Jev dicoba lagi 12 jam kemudian.
 - Kode: `src/competitors.ts`, `web/src/pages/Competitors.tsx`.
