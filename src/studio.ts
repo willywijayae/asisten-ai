@@ -251,6 +251,7 @@ export async function getProject(env: Env, id: number) {
     approved: p.approved ? (JSON.parse(p.approved) as Partial<Record<Stage, string>>) : {},
     clips,
     has_character_image: !!character.value,
+    agent_request: await latestRequest(env, id),
     api: { chatgpt: !!env.OPENAI_API_KEY, grok: !!env.XAI_API_KEY },
   };
 }
@@ -792,5 +793,75 @@ export async function browserUpload(env: Env, clipId: number, body: ArrayBuffer,
 export async function browserStatus(env: Env, clipId: number, error: string): Promise<void> {
   await env.DB.prepare("UPDATE content_clips SET status = 'failed', error = ?, updated_at = ? WHERE id = ? AND status = 'rendering'")
     .bind(`Claude: ${str(error, 400)}`, now(), clipId)
+    .run();
+}
+
+// --- Antrean "Buat dengan Claude" (sekali klik di website) ---
+// Website menaruh permintaan; tugas terjadwal Claude desktop di laptop pemilik mengambilnya
+// (action "next"), membuat videonya di Chrome, lalu melapor (action "finish").
+
+export interface AgentRequest {
+  id: number;
+  project_id: number;
+  provider: Provider;
+  status: "pending" | "claimed" | "done" | "failed" | "cancelled";
+  note: string | null;
+  created_at: string;
+  claimed_at: string | null;
+  finished_at: string | null;
+}
+
+async function expireStaleRequests(env: Env): Promise<void> {
+  const cutoff = new Date(Date.now() - 90 * 60_000).toISOString();
+  await env.DB.prepare(
+    "UPDATE studio_agent_requests SET status = 'failed', note = 'Tidak selesai dalam 90 menit (laptop/Chrome mati?)', finished_at = ? WHERE status = 'claimed' AND claimed_at < ?",
+  )
+    .bind(now(), cutoff)
+    .run();
+}
+
+export async function latestRequest(env: Env, projectId: number): Promise<AgentRequest | null> {
+  await expireStaleRequests(env);
+  return env.DB.prepare("SELECT * FROM studio_agent_requests WHERE project_id = ? ORDER BY id DESC LIMIT 1").bind(projectId).first<AgentRequest>();
+}
+
+export async function requestAgent(env: Env, projectId: number, provider: Provider): Promise<AgentRequest> {
+  const p = await env.DB.prepare("SELECT storyboard, approved FROM content_projects WHERE id = ?").bind(projectId).first<{ storyboard: string | null; approved: string | null }>();
+  if (!p?.storyboard || !JSON.parse(p.approved ?? "{}").storyboard) throw new Error("Setujui storyboard dulu");
+  const open = await latestRequest(env, projectId);
+  if (open && (open.status === "pending" || open.status === "claimed")) return open;
+  const row = await env.DB.prepare("INSERT INTO studio_agent_requests (project_id, provider) VALUES (?, ?) RETURNING *")
+    .bind(projectId, provider)
+    .first<AgentRequest>();
+  await logActivity(env, "manajer_marketing", "step", `Meminta Claude membuat video di ${provider === "grok" ? "Grok Imagine" : "ChatGPT"}`, "visit:konten");
+  return row!;
+}
+
+export async function cancelAgent(env: Env, projectId: number): Promise<void> {
+  await env.DB.prepare("UPDATE studio_agent_requests SET status = 'cancelled', finished_at = ? WHERE project_id = ? AND status = 'pending'")
+    .bind(now(), projectId)
+    .run();
+}
+
+/** Ambil permintaan tertua yang menunggu + pekerjaan videonya. null = tidak ada. */
+export async function claimNext(env: Env) {
+  await expireStaleRequests(env);
+  const r = await env.DB.prepare("SELECT * FROM studio_agent_requests WHERE status = 'pending' ORDER BY id LIMIT 1").first<AgentRequest>();
+  if (!r) return null;
+  const claimed = await env.DB.prepare("UPDATE studio_agent_requests SET status = 'claimed', claimed_at = ? WHERE id = ? AND status = 'pending'")
+    .bind(now(), r.id)
+    .run();
+  if (!claimed.meta.changes) return null;
+  try {
+    return { request: r.id, ...(await browserJobs(env, r.project_id, r.provider)) };
+  } catch (e) {
+    await finishRequest(env, r.id, false, e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+export async function finishRequest(env: Env, requestId: number, ok: boolean, note?: string): Promise<void> {
+  await env.DB.prepare("UPDATE studio_agent_requests SET status = ?, note = ?, finished_at = ? WHERE id = ?")
+    .bind(ok ? "done" : "failed", note ? str(note, 500) : null, now(), requestId)
     .run();
 }

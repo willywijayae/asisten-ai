@@ -113,6 +113,11 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
       throw new HttpError(403, "Kunci salah");
     }
     const b = await readJson(req);
+    if (b.action === "next") return json({ job: await studio.claimNext(env) });
+    if (b.action === "finish") {
+      await studio.finishRequest(env, Number(b.request), !!b.ok, b.note);
+      return json({ ok: true });
+    }
     if (!b.project) return json({ projects: await studio.listProjects(env) });
     const p = await studio.getProject(env, Number(b.project));
     if (!p) throw new HttpError(404, "Proyek tidak ditemukan");
@@ -596,7 +601,7 @@ async function studioRoute(req: Request, env: Env, path: string, method: string)
       return json({ ok: true }, 202);
     }
   }
-  m = /^\/studio\/(\d+)(?:\/(generate|save|clips|character|archify))?$/.exec(path);
+  m = /^\/studio\/(\d+)(?:\/(generate|save|clips|character|archify|claude))?$/.exec(path);
   if (!m) throw new HttpError(404, "Tidak ditemukan");
   const id = Number(m[1]);
   const action = m[2];
@@ -625,6 +630,14 @@ async function studioRoute(req: Request, env: Env, path: string, method: string)
   if (action === "clips" && method === "POST") {
     const { provider } = await readJson(req);
     await guard(() => studio.buildClips(env, id, provider === "grok" ? "grok" : "chatgpt"));
+    return json({ ok: true });
+  }
+  if (action === "claude" && method === "POST") {
+    const { provider } = await readJson(req);
+    return json(await guard(() => studio.requestAgent(env, id, provider === "chatgpt" ? "chatgpt" : "grok")), 202);
+  }
+  if (action === "claude" && method === "DELETE") {
+    await studio.cancelAgent(env, id);
     return json({ ok: true });
   }
   if (action === "character" && method === "POST") {

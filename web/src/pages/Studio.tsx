@@ -86,6 +86,15 @@ interface Project {
   clips: Clip[];
   has_character_image: boolean;
   api: Record<Provider, boolean>;
+  agent_request: {
+    id: number;
+    provider: Provider;
+    status: "pending" | "claimed" | "done" | "failed" | "cancelled";
+    note: string | null;
+    created_at: string;
+    claimed_at: string | null;
+    finished_at: string | null;
+  } | null;
   updated_at: string;
 }
 
@@ -213,7 +222,9 @@ function ProjectView({ id, onBack }: { id: number; onBack: () => void }) {
   const current = step ?? p?.stage ?? "avatar";
 
   // Pantau selama tim AI bekerja atau video sedang dibuat.
-  const working = !!p && (!!p.busy || p.clips.some((c) => c.status === "rendering"));
+  const working =
+    !!p &&
+    (!!p.busy || p.clips.some((c) => c.status === "rendering") || ["pending", "claimed"].includes(p.agent_request?.status ?? ""));
   useEffect(() => {
     if (!working) return;
     const t = setInterval(reload, 4000);
@@ -868,18 +879,7 @@ function ResultStep({ p, reload }: { p: Project; reload: () => void }) {
         </a>
       </Card>
 
-      <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-        <Sparkles className="size-5 shrink-0 text-accent" />
-        <div className="min-w-0 flex-1 text-sm">
-          <p className="font-medium">Biar Claude yang membuatkan di browsermu</p>
-          <p className="text-xs text-muted">
-            Butuh Claude desktop + ekstensi Claude in Chrome yang tersambung. Claude membuka {PROVIDER_NAME[provider]} dengan akunmu, menempel prompt
-            tiap adegan, menunggu videonya, lalu mengirimnya ke sini. Kirim perintah ini ke Claude:
-          </p>
-          <p className="mt-1.5 rounded-md bg-surface-2 px-2.5 py-1.5 text-[13px]">{agentPrompt}</p>
-        </div>
-        <CopyButton text={agentPrompt} label="Salin perintah" />
-      </Card>
+      <ClaudeCard p={p} provider={provider} reload={reload} agentPrompt={agentPrompt} />
 
       <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div className="space-y-4">
@@ -980,5 +980,80 @@ function ResultStep({ p, reload }: { p: Project; reload: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Sekali klik: Claude di laptop pemilik mengambil alih Chrome dan membuat semua klip. */
+function ClaudeCard({ p, provider, reload, agentPrompt }: { p: Project; provider: Provider; reload: () => void; agentPrompt: string }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const r = p.agent_request;
+  const active = r && (r.status === "pending" || r.status === "claimed");
+  const start = async () => {
+    setBusy(true);
+    try {
+      await api(`/studio/${p.id}/claude`, { body: { provider } });
+      toast.ok("Dikirim ke Claude — mulai dalam beberapa menit");
+      reload();
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cancel = async () => {
+    await api(`/studio/${p.id}/claude`, { method: "DELETE" }).catch(() => {});
+    reload();
+  };
+  return (
+    <Card className="p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+          {active ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5" />}
+        </span>
+        <div className="min-w-0 flex-1 text-sm">
+          {r?.status === "pending" ? (
+            <>
+              <p className="font-medium">Menunggu Claude di laptopmu…</p>
+              <p className="text-xs text-muted">Mulai dalam ±5 menit. Biarkan laptop, Claude desktop, dan Chrome tetap menyala.</p>
+            </>
+          ) : r?.status === "claimed" ? (
+            <>
+              <p className="font-medium">Claude sedang membuat video di Chrome ({PROVIDER_NAME[r.provider]})</p>
+              <p className="text-xs text-muted">Jangan tutup tab yang sedang bergerak. Klip muncul di bawah satu per satu; kabar akhir dikirim ke Telegram.</p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium">Buat semua video dengan Claude</p>
+              <p className="text-xs text-muted">
+                Sekali klik: Claude membuka {PROVIDER_NAME[provider]} di Chrome dengan akunmu, membuat tiap adegan, lalu mengirim videonya ke sini.
+                {r?.status === "done" && " Permintaan terakhir selesai."}
+                {r?.status === "failed" && ` Permintaan terakhir gagal: ${r.note ?? "tanpa keterangan"}.`}
+              </p>
+            </>
+          )}
+        </div>
+        {r?.status === "pending" ? (
+          <Button size="sm" variant="ghost" onClick={cancel}>
+            Batal
+          </Button>
+        ) : r?.status === "claimed" ? null : (
+          <Button variant="primary" loading={busy} onClick={start}>
+            {!busy && <Play className="size-4" />} Buat dengan Claude
+          </Button>
+        )}
+      </div>
+      <details className="mt-3 text-xs text-muted">
+        <summary className="cursor-pointer">Cara kerja & perintah manual</summary>
+        <p className="mt-1.5">
+          Tugas terjadwal "Studio — buat video" di Claude desktop mengecek permintaan tiap 5 menit (jam 07–23). Syarat: laptop menyala, Claude desktop terbuka,
+          Chrome terbuka & login {PROVIDER_NAME[provider]}. Kalau mau langsung, kirim ke Claude:
+        </p>
+        <div className="mt-1.5 flex items-start gap-2">
+          <p className="flex-1 rounded-md bg-surface-2 px-2.5 py-1.5 text-[13px] text-fg">{agentPrompt}</p>
+          <CopyButton text={agentPrompt} label="Salin" />
+        </div>
+      </details>
+    </Card>
   );
 }
