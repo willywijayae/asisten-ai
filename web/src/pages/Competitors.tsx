@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ChevronLeft,
+  Clapperboard,
   ChevronRight,
   Copy,
   ExternalLink,
@@ -22,7 +23,7 @@ import { api } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import { fmtDate, fmtWhen } from "../lib/time";
 import { Badge, Button, Card, Empty, Modal, PageHeader, SectionTitle, Spinner } from "../components/ui";
-import { useToast } from "../components/app-context";
+import { useRouter, useToast } from "../components/app-context";
 
 const ANGLES: Record<string, string> = {
   masalah_solusi: "Masalah → solusi",
@@ -346,8 +347,38 @@ function RemixButton({ ad, className = "" }: { ad: Ad; className?: string }) {
           <Sparkles className="size-3.5" /> {state.status === "error" ? "Gagal — coba lagi" : "Bikin 5 konten mirip"}
         </Button>
       )}
+      <StudioButton ad={ad} />
       {open && state.id && <RemixModal id={state.id} onClose={() => setOpen(false)} />}
     </div>
+  );
+}
+
+/** Jadikan iklan ini acuan proyek baru di Studio Konten (avatar → produk → storyboard → video). */
+function StudioButton({ ad }: { ad: Ad }) {
+  const toast = useToast();
+  const { navigate } = useRouter();
+  const [busy, setBusy] = useState(false);
+  const start = async () => {
+    setBusy(true);
+    try {
+      const hook = hookLine(ad);
+      const r = await api<{ id: number }>("/studio", {
+        body: {
+          title: `Konten ala ${ad.page_name ?? "kompetitor"}`,
+          brief: `Buat video iklan untuk produk kita yang meniru pola iklan kompetitor ${ad.page_name ?? ""}${hook ? ` (hook: "${hook.slice(0, 160)}")` : ""}. Sesuaikan dengan produk, target, dan preferensi pemilik.`,
+          source_ad_id: ad.id,
+        },
+      });
+      navigate(`/studio?p=${r.id}`);
+    } catch (e) {
+      toast.error(e);
+      setBusy(false);
+    }
+  };
+  return (
+    <Button size="sm" variant="ghost" loading={busy} onClick={start}>
+      {!busy && <Clapperboard className="size-3.5" />} Buat di Studio
+    </Button>
   );
 }
 

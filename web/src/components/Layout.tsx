@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Box, Brain, CheckSquare, Radar, LayoutDashboard, MessageCircle, Settings, UserRound, type LucideIcon } from "lucide-react";
+import { Box, Brain, CheckSquare, Clapperboard, Radar, LayoutDashboard, MessageCircle, Settings, UserRound, type LucideIcon } from "lucide-react";
 import { useRouter } from "./app-context";
 
 export interface NavItem {
@@ -25,7 +25,10 @@ export const NAV: { group: string; items: NavItem[] }[] = [
   },
   {
     group: "Marketing",
-    items: [{ path: "/kompetitor", label: "Riset Kompetitor", short: "Kompetitor", icon: Radar }],
+    items: [
+      { path: "/kompetitor", label: "Riset Kompetitor", short: "Kompetitor", icon: Radar },
+      { path: "/studio", label: "Studio Konten", short: "Studio", icon: Clapperboard },
+    ],
   },
   {
     group: "Lainnya",

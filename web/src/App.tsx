@@ -13,6 +13,7 @@ import { Profile } from "./pages/Profile";
 import { Office } from "./pages/Office";
 import { Competitors } from "./pages/Competitors";
 import { ImportAds } from "./pages/ImportAds";
+import { Studio } from "./pages/Studio";
 
 export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -55,6 +56,7 @@ export function App() {
   if (path === "/") page = <Dashboard onChanged={refreshBadges} />;
   else if (path.startsWith("/kompetitor")) page = <Competitors />;
   else if (path.startsWith("/impor-iklan")) page = <ImportAds />;
+  else if (path.startsWith("/studio")) page = <Studio />;
   else if (path.startsWith("/kantor")) page = <Office onChanged={refreshBadges} />;
   else if (path.startsWith("/tugas")) page = <Tasks onChanged={refreshBadges} />;
   else if (path.startsWith("/catatan")) page = <Notes />;

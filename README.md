@@ -45,6 +45,13 @@ Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Teleg
 - **Penilaian**: [Jev AI](https://jev-ai.pro) kalau secret `JEV_API_KEY` diisi (`npx wrangler secret put JEV_API_KEY`); kalau kredit habis (402) / key salah → otomatis dinilai tim AI (Workers AI, gratis), Jev dicoba lagi 12 jam kemudian.
 - Kode: `src/competitors.ts`, `web/src/pages/Competitors.tsx`.
 
+### Studio Konten (avatar → produk → storyboard → video)
+
+- Menu **Marketing → Studio Konten** (atau tombol **Buat di Studio** di iklan kompetitor). Tiap tahap dikerjakan tim AI (Opus) lewat antrean, divalidasi, bisa diedit, dan harus **disetujui** sebelum tahap berikutnya (pola [Archify](https://github.com/tt-a1i/archify)): **Avatar** (pelanggan + karakter video AI dengan deskripsi konsistensi), **Produk** (angle, 5 hook, jawaban keberatan, klaim yang dihindari), **Storyboard** (adegan ≤ batas klip: Sora 4/8/12 dtk, Grok ≤15 dtk), **Hasil** (prompt per klip).
+- **Hasil video**: mode prompt (gratis — tempel di ChatGPT/Sora atau Grok Imagine, unggah videonya), atau otomatis lewat API kalau secret `OPENAI_API_KEY` (Sora, `sora-2`) / `XAI_API_KEY` (Grok Imagine, butuh foto karakter) diisi. Video disimpan di KV `MEDIA` (≤24 MB/klip), diputar berurutan.
+- **Peta alur** gaya Archify (lajur per tahap, klik simpul untuk menelusuri jalur) dan ekspor **IR workflow Archify** (`/api/studio/:id/archify`, lolos `archify validate`) untuk dirender jadi diagram interaktif resmi.
+- Kode: `src/studio.ts`, `web/src/pages/Studio.tsx`.
+
 ### Memori jangka panjang (ala [mem0](https://github.com/mem0ai/mem0), gratis)
 
 - Setelah tiap obrolan (Telegram & Chat AI), Gemma di Workers AI mengambil **fakta tahan lama** (tim, klien, rencana, angka) dan menyimpannya ke tabel `memories`. Fakta hanya ditambah, tidak pernah ditimpa; yang mirip ≥ 0,9 dengan fakta lama dilewati.

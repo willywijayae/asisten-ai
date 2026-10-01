@@ -3,22 +3,28 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 
 // --- Router mini (tanpa dependensi) ---
 
-const RouterCtx = createContext<{ path: string; navigate: (to: string) => void }>({ path: "/", navigate: () => {} });
+const RouterCtx = createContext<{ path: string; search: string; navigate: (to: string) => void }>({
+  path: "/",
+  search: "",
+  navigate: () => {},
+});
 
 export function RouterProvider({ children }: { children: ReactNode }) {
-  const [path, setPath] = useState(window.location.pathname);
+  // Path + query, supaya pindah ?p=… di halaman yang sama juga memicu render ulang.
+  const [loc, setLoc] = useState(() => ({ path: window.location.pathname, search: window.location.search }));
   useEffect(() => {
-    const onPop = () => setPath(window.location.pathname);
+    const onPop = () => setLoc({ path: window.location.pathname, search: window.location.search });
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const navigate = useCallback((to: string) => {
     if (to === window.location.pathname + window.location.search) return;
     window.history.pushState(null, "", to);
-    setPath(new URL(to, window.location.origin).pathname);
+    const url = new URL(to, window.location.origin);
+    setLoc({ path: url.pathname, search: url.search });
     window.scrollTo(0, 0);
   }, []);
-  return <RouterCtx.Provider value={{ path, navigate }}>{children}</RouterCtx.Provider>;
+  return <RouterCtx.Provider value={{ path: loc.path, search: loc.search, navigate }}>{children}</RouterCtx.Provider>;
 }
 
 export const useRouter = () => useContext(RouterCtx);

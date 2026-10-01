@@ -112,6 +112,13 @@ npx wrangler secret put JEV_API_KEY
 ```
 Kalau kredit Jev habis, iklan otomatis dinilai oleh tim AI sendiri.
 
+### Video otomatis di Studio Konten (berbayar)
+Tanpa ini, Studio Konten memberi prompt siap tempel untuk ChatGPT (Sora) atau Grok Imagine, gratis memakai akunmu sendiri. Untuk membuat video langsung dari aplikasi (bayar per detik video):
+```bash
+npx wrangler secret put OPENAI_API_KEY   # Sora (ChatGPT)
+npx wrangler secret put XAI_API_KEY      # Grok Imagine — butuh foto karakter yang diunggah di tahap Hasil
+```
+
 ### Ubah nama, zona waktu, atau model
 Edit bagian `"vars"` di `wrangler.jsonc` (`OWNER_NAME`, `TIMEZONE_OFFSET`, `MODEL_FAST`, `MODEL_SMART`), lalu jalankan `npm run deploy`.
 

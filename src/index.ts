@@ -9,6 +9,7 @@ import { clip, logActivity, pruneActivity } from "./activity";
 import { extractMemories, reindexAll } from "./memory";
 import { weeklyReview } from "./ceo";
 import { runRemix, saveMedia, scorePending } from "./competitors";
+import { runStage, runVideo } from "./studio";
 import { handleApi } from "./api";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp";
@@ -105,8 +106,15 @@ const app = {
 
   async queue(batch: MessageBatch<JobMessage>, env: Env): Promise<void> {
     for (const raw of batch.messages) {
-      if ("type" in raw.body && raw.body.type === "remix") {
-        await runRemix(env, raw.body.remixId).catch((err) => console.error("Remix gagal", err));
+      if ("type" in raw.body) {
+        const job = raw.body;
+        const work =
+          job.type === "remix"
+            ? runRemix(env, job.remixId)
+            : job.type === "studio"
+              ? runStage(env, job.projectId, job.stage, job.options as Record<string, any>)
+              : runVideo(env, job.clipId);
+        await work.catch((err) => console.error(`Pekerjaan ${job.type} gagal`, err));
         raw.ack();
         continue;
       }

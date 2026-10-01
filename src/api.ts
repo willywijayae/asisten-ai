@@ -11,6 +11,7 @@ import { officeState } from "./activity";
 import * as memory from "./memory";
 import { weeklyReview } from "./ceo";
 import * as competitors from "./competitors";
+import * as studio from "./studio";
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(data, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -90,8 +91,18 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
   const method = req.method;
 
   // Semua request yang mengubah data wajib JSON: form lintas situs tidak bisa mengirim ini tanpa CORS.
-  if (method !== "GET" && !(req.headers.get("content-type") ?? "").includes("application/json")) {
+  // Unggahan file (Studio Konten) boleh biner, asal membawa header khusus x-upload: header kustom
+  // memicu preflight CORS yang tidak pernah kita izinkan, jadi tetap aman dari CSRF.
+  const isUpload = !!req.headers.get("x-upload");
+  if (method !== "GET" && !isUpload && !(req.headers.get("content-type") ?? "").includes("application/json")) {
     throw new HttpError(415, "Content-Type harus application/json");
+  }
+
+  // Media studio bertanda tangan (dipakai Grok untuk mengambil foto karakter), tanpa sesi.
+  if (path === "/public-media" && method === "GET") {
+    const key = await studio.verifySignedMedia(env, url);
+    if (!key) throw new HttpError(403, "Tautan tidak valid atau kedaluwarsa");
+    return studio.serveStudioMedia(env, key, req);
   }
 
   // --- Auth (tanpa sesi) ---
@@ -358,6 +369,9 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
     }
   }
 
+  // --- Studio Konten ---
+  if (path.startsWith("/studio")) return studioRoute(req, env, path, method);
+
   // --- Memori jangka panjang ---
   if (path === "/memories" && method === "GET") {
     const q = url.searchParams.get("q")?.trim();
@@ -520,4 +534,80 @@ async function ingestScans(env: Env, ctx: ExecutionContext, b: any, defaultSourc
       .catch((err) => console.error("Pasca-ingest gagal", err)),
   );
   return { ...totals, reportId };
+}
+
+async function studioRoute(req: Request, env: Env, path: string, method: string): Promise<Response> {
+  const guard = async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof HttpError) throw e;
+      throw new HttpError(400, e instanceof Error ? e.message : String(e));
+    }
+  };
+  if (path === "/studio" && method === "GET") return json({ projects: await studio.listProjects(env) });
+  if (path === "/studio" && method === "POST") {
+    const b = await readJson(req);
+    return json({ id: await guard(() => studio.createProject(env, b)) }, 201);
+  }
+  let m = /^\/studio\/clips\/(\d+)\/(upload|render|video)$/.exec(path);
+  if (m) {
+    const clipId = Number(m[1]);
+    if (m[2] === "video" && method === "GET") return studio.serveStudioMedia(env, `studio:clip:${clipId}`, req);
+    if (m[2] === "upload" && method === "POST") {
+      await guard(() => req.arrayBuffer().then((buf) => studio.uploadClip(env, clipId, buf, req.headers.get("content-type") ?? "")));
+      return json({ ok: true });
+    }
+    if (m[2] === "render" && method === "POST") {
+      await guard(() => studio.requestRender(env, clipId));
+      return json({ ok: true }, 202);
+    }
+  }
+  m = /^\/studio\/(\d+)(?:\/(generate|save|clips|character|archify))?$/.exec(path);
+  if (!m) throw new HttpError(404, "Tidak ditemukan");
+  const id = Number(m[1]);
+  const action = m[2];
+  if (!action && method === "GET") {
+    const p = await studio.getProject(env, id);
+    if (!p) throw new HttpError(404, "Proyek tidak ditemukan");
+    return json(p);
+  }
+  if (!action && method === "DELETE") {
+    await studio.deleteProject(env, id);
+    return json({ ok: true });
+  }
+  if (action === "generate" && method === "POST") {
+    const { stage, options } = await readJson(req);
+    if (!studio.STAGES.includes(stage)) throw new HttpError(400, "Tahap tidak dikenal");
+    await guard(() => studio.requestStage(env, id, stage, options ?? {}));
+    return json({ ok: true }, 202);
+  }
+  if (action === "save" && method === "POST") {
+    const { stage, data, approve } = await readJson(req);
+    if (!studio.STAGES.includes(stage)) throw new HttpError(400, "Tahap tidak dikenal");
+    const errors = await guard(() => studio.saveStage(env, id, stage, data, !!approve));
+    if (approve && !errors.length && stage === "storyboard") await studio.saveProjectNote(env, id);
+    return json({ ok: !errors.length, errors });
+  }
+  if (action === "clips" && method === "POST") {
+    const { provider } = await readJson(req);
+    await guard(() => studio.buildClips(env, id, provider === "grok" ? "grok" : "chatgpt"));
+    return json({ ok: true });
+  }
+  if (action === "character" && method === "POST") {
+    await guard(() => req.arrayBuffer().then((buf) => studio.uploadCharacter(env, id, buf, req.headers.get("content-type") ?? "")));
+    return json({ ok: true });
+  }
+  if (action === "character" && method === "GET") return studio.serveStudioMedia(env, `studio:${id}:character`, req);
+  if (action === "archify" && method === "GET") {
+    const p = await studio.getProject(env, id);
+    if (!p) throw new HttpError(404, "Proyek tidak ditemukan");
+    return new Response(JSON.stringify(studio.archifyIR(p), null, 2), {
+      headers: {
+        "content-type": "application/json",
+        "content-disposition": `attachment; filename="studio-${id}.workflow.json"`,
+      },
+    });
+  }
+  throw new HttpError(405, "Metode tidak didukung");
 }

@@ -853,7 +853,7 @@ export async function generateReport(env: Env, query?: string): Promise<number> 
 }
 
 /** JSON dari model: ambil blok {...} dan bereskan kesalahan umum (koma berlebih, blok ```json). */
-function parseLooseJson(text: string): unknown {
+export function parseLooseJson(text: string): unknown {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) return null;

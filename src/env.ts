@@ -2,7 +2,11 @@ import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
 import type { TgUpdate } from "./telegram";
 
 /** Pesan antrean: update Telegram, atau pekerjaan latar belakang yang lama (mis. bikin konten). */
-export type JobMessage = TgUpdate | { type: "remix"; remixId: number };
+export type JobMessage =
+  | TgUpdate
+  | { type: "remix"; remixId: number }
+  | { type: "studio"; projectId: number; stage: "avatar" | "produk" | "storyboard"; options?: Record<string, unknown> }
+  | { type: "video"; clipId: number };
 
 export interface Env {
   DB: D1Database;
@@ -41,4 +45,10 @@ export interface Env {
   JEV_MODEL?: string;
   /** Kunci untuk mengirim hasil scan iklan kompetitor dari luar (mis. tugas terjadwal Claude). */
   INGEST_KEY?: string;
+  /** Studio Konten, mode API (opsional): video otomatis lewat OpenAI Sora / xAI Grok Imagine. */
+  OPENAI_API_KEY?: string;
+  XAI_API_KEY?: string;
+  SORA_MODEL?: string;
+  SORA_SIZE?: string;
+  GROK_VIDEO_MODEL?: string;
 }
