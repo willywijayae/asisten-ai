@@ -222,7 +222,7 @@ export async function reindexAll(env: Env): Promise<{ notes: number; memories: n
 
 // --- Ekstraksi otomatis dari obrolan ---
 
-const EXTRACT_PROMPT = `Kamu juru arsip memori jangka panjang untuk asisten pribadi Willy (pemilik).
+const EXTRACT_PROMPT = (owner: string) => `Kamu juru arsip memori jangka panjang untuk asisten pribadi ${owner} (pemilik).
 Dari satu giliran percakapan, ambil FAKTA TAHAN LAMA yang berguna diingat berminggu-minggu ke depan:
 tentang pemilik (rencana, keputusan, kondisi, target, kebiasaan), orang di sekitarnya (tim, klien, keluarga, peran & kabarnya), bisnis/brand/produk, angka penting, dan kesepakatan.
 
@@ -238,7 +238,7 @@ Aturan penulisan:
 - Ubah waktu relatif jadi tanggal absolut memakai "Waktu sekarang".
 - Hanya dari yang benar-benar dikatakan pemilik; jangan menebak.
 
-Balas HANYA JSON: {"facts":[{"content":"...","entities":["Justin","Wellous"]}]}. Kalau tidak ada fakta baru: {"facts":[]}.`;
+Balas HANYA JSON: {"facts":[{"content":"...","entities":["Budi","NamaBrand"]}]}. Kalau tidak ada fakta baru: {"facts":[]}.`;
 
 const SECRET = /(password|kata sandi|\bpin\b|\botp\b|cvv|\b\d{12,}\b)/i;
 
@@ -275,7 +275,7 @@ export async function extractMemories(env: Env, turn: { user: string; reply: str
     const known = await recallMemories(env, user, 8);
     const res = (await env.AI.run(env.FALLBACK_MODEL as any, {
       messages: [
-        { role: "system", content: EXTRACT_PROMPT },
+        { role: "system", content: EXTRACT_PROMPT(env.OWNER_NAME || "pemilik") },
         {
           role: "user",
           content: `Waktu sekarang: ${nowContext(env.TIMEZONE_OFFSET)}\n\nFakta tersimpan:\n${

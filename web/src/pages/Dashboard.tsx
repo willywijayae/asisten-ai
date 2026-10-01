@@ -11,6 +11,8 @@ import { useToast } from "../components/app-context";
 
 export function Dashboard({ onChanged }: { onChanged: () => void }) {
   const { data, error, reload } = useLoad(() => api<Summary>("/summary"), []);
+  const { data: me } = useLoad(() => api<{ name: string | null }>("/me"), []);
+  const ownerName = me?.name;
   const [editing, setEditing] = useState<Task | null | undefined>(undefined);
   const [noteOpen, setNoteOpen] = useState<null | { id?: number; content?: string }>(null);
   const [capture, setCapture] = useState("");
@@ -67,7 +69,10 @@ export function Dashboard({ onChanged }: { onChanged: () => void }) {
     <>
       <div className="mb-6">
         <p className="text-sm text-muted">{todayLabel()}</p>
-        <h1 className="text-2xl font-semibold tracking-tight">{greeting()}, Willy 👋</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {greeting()}
+          {ownerName ? `, ${ownerName}` : ""} 👋
+        </h1>
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

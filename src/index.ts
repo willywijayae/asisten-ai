@@ -23,7 +23,7 @@ Yang bisa kamu lakukan:
 - Kirim voice note → aku transkrip & catat poin pentingnya
 - "catat bahwa password wifi kantor ada di laci" → tersimpan di second brain
 - Tanya: "apa aja tugasku minggu ini?", "aku pernah catat apa soal Budi?"
-- Urusan marketing: "bikinin 5 hook video Wellous", "ide konten minggu depan" → dikerjakan tim marketing
+- Urusan marketing: "bikinin 5 hook video produkku", "ide konten minggu depan" → dikerjakan tim marketing
 
 Perintah:
 /tugas — daftar tugas aktif
@@ -170,7 +170,11 @@ function oauthProvider(env: Env): OAuthProvider<Env> {
 }
 
 export default {
-  fetch: (req, env, ctx) => oauthProvider(env).fetch(req, env, ctx),
+  fetch: (req, env, ctx) => {
+    // Duplikat baru belum tentu mengisi PUBLIC_URL: pakai alamat yang sedang diakses.
+    env.PUBLIC_URL ||= new URL(req.url).origin;
+    return oauthProvider(env).fetch(req, env, ctx);
+  },
   queue: app.queue,
   scheduled: app.scheduled,
 } satisfies ExportedHandler<Env, JobMessage>;

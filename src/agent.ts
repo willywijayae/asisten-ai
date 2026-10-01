@@ -152,7 +152,7 @@ const MEMORY_TOOLS = [
   }),
   fn("remember_preference", "Simpan preferensi/koreksi permanen pemilik tentang cara kamu bekerja. Tulis sebagai aturan singkat yang jelas.", {
     type: "object",
-    properties: { content: { type: "string", description: 'mis. "Panggil pemilik dengan \'Mas Willy\'" atau "\'Tim\' berarti tim sales expert SVO".' } },
+    properties: { content: { type: "string", description: 'mis. "Panggil pemilik dengan \'Mas Budi\'" atau "\'Tim\' berarti tim sales di kantor".' } },
     required: ["content"],
   }),
   fn("forget_preference", "Hapus satu preferensi berdasarkan id-nya (lihat daftar PREFERENSI PEMILIK).", {

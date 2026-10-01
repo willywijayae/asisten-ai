@@ -79,33 +79,16 @@ Cron (tiap 5 menit / 07:00 / 21:00) ──▶ pengingat & briefing ──▶ Tel
 
 ## Setup
 
-Yang dibutuhkan: akun Cloudflare (Free cukup), akun [Puter](https://puter.com) (gratis, ada jatah kredit bulanan), dan bot Telegram dari [@BotFather](https://t.me/BotFather) (`/newbot` → simpan tokennya).
+Panduan lengkap (termasuk untuk menduplikasi ke orang lain): **[docs/DUPLIKASI.md](docs/DUPLIKASI.md)**.
+
+Singkatnya: akun Cloudflare (Free), bot Telegram dari [@BotFather](https://t.me/BotFather), Node.js 20+, lalu
 
 ```bash
 npm install
-npx wrangler login
-
-# 1. Buat database & queue, lalu salin database_id ke wrangler.jsonc
-npx wrangler d1 create asisten-ai-db
-npx wrangler queues create asisten-ai-jobs
-npm run db:migrate
-
-# 2. Simpan secret
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-npx wrangler secret put TELEGRAM_WEBHOOK_SECRET   # string acak bebas, mis. hasil `openssl rand -hex 24`
-
-# 3. Login Puter (browser terbuka, token langsung disimpan sebagai secret)
-npm run puter:login
-
-# 4. Build website + deploy
-npm run deploy
+npm run setup   # membuat D1, KV, Queue, Vectorize; isi wrangler.jsonc; secret; migrasi; deploy; webhook
 ```
 
-Setelah deploy:
-
-1. Buka `https://asisten-ai.<subdomain>.workers.dev/setup?secret=<TELEGRAM_WEBHOOK_SECRET>` sekali untuk mendaftarkan webhook.
-2. Chat bot kamu di Telegram → bot membalas dengan chat ID kamu.
-3. Isi `OWNER_CHAT_ID` di `wrangler.jsonc` dengan angka itu, lalu `npm run deploy` lagi.
+Skrip `scripts/setup.mjs` aman diulang (resource yang ada dipakai ulang). Nama pemilik, zona waktu, dan chat ID ada di `"vars"` `wrangler.jsonc`; `PUBLIC_URL` boleh kosong (diambil dari alamat request).
 
 ## Konektor Claude (MCP)
 

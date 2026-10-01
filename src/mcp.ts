@@ -14,7 +14,7 @@ import { localDayRange, nowContext } from "./time";
 // Server MCP "Second Brain": membuka tugas, catatan, profil & preferensi pemilik ke Claude
 // (atau klien MCP lain). Hanya bisa diakses dengan token OAuth yang disetujui pemilik.
 
-const INSTRUCTIONS = `Second Brain milik Willy: tugas/pengingat, catatan, profil, dan preferensi. Data yang sama dipakai bot Telegram & website adminnya.
+const INSTRUCTIONS = (owner: string) => `Second Brain milik ${owner}: tugas/pengingat, catatan, profil, dan preferensi. Data yang sama dipakai bot Telegram & website adminnya.
 - Semua waktu dalam WIB (UTC+07:00). Isi waktu dengan format lokal "YYYY-MM-DD HH:mm"; kalau cuma tanggal, dianggap 09:00.
 - "remind" = kapan bot Telegram mengirim pengingat. Kosong = 60 menit sebelum "due".
 - Baca get_profile di awal untuk memahami pemilik, dan patuhi preferensinya.
@@ -81,7 +81,7 @@ function withActivity(env: Env, server: McpServer): McpServer {
 }
 
 function buildServer(env: Env, ctx?: ExecutionContext): McpServer {
-  const server = withActivity(env, new McpServer({ name: "second-brain", version: "1.0.0" }, { instructions: INSTRUCTIONS }));
+  const server = withActivity(env, new McpServer({ name: "second-brain", version: "1.0.0" }, { instructions: INSTRUCTIONS(env.OWNER_NAME || "pemilik") }));
   const tz = env.TIMEZONE_OFFSET;
   const readOnly = { readOnlyHint: true, openWorldHint: false };
 

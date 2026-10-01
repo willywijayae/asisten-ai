@@ -11,7 +11,8 @@
     "db:migrate:local": "wrangler d1 migrations apply asisten-ai-db --local",
     "puter:login": "node scripts/puter-login.cjs | wrangler secret put PUTER_AUTH_TOKEN",
     "dev:web": "vite --config web/vite.config.ts",
-    "build": "vite build --config web/vite.config.ts"
+    "build": "vite build --config web/vite.config.ts",
+    "setup": "node scripts/setup.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260930.1",

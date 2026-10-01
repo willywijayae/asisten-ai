@@ -15,6 +15,8 @@ export interface Env {
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
   OWNER_CHAT_ID: string;
+  /** Nama panggilan pemilik (dipakai di sapaan & prompt). Kosong = "pemilik". */
+  OWNER_NAME?: string;
   /** Model Claude (Puter) untuk pekerjaan rutin, mis. claude-haiku-4-5. */
   MODEL_FAST: string;
   /** Model Claude (Puter) untuk permintaan rumit, mis. claude-opus-5-5. */
@@ -22,7 +24,7 @@ export interface Env {
   /** Model Workers AI gratis sebagai cadangan. */
   FALLBACK_MODEL: string;
   TIMEZONE_OFFSET: string;
-  /** URL publik Worker, dipakai untuk metadata OAuth/MCP. */
+  /** URL publik Worker untuk metadata OAuth/MCP. Kosong = diambil dari alamat request. */
   PUBLIC_URL: string;
   /** Penyimpanan OAuth (konektor MCP) & helper yang disuntikkan OAuthProvider. */
   OAUTH_KV: KVNamespace;

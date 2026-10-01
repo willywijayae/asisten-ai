@@ -141,7 +141,7 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
 
   if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
 
-  if (path === "/me") return json({ ok: true });
+  if (path === "/me") return json({ ok: true, name: env.OWNER_NAME || null });
 
   if (path === "/summary" && method === "GET") {
     const now = new Date().toISOString();

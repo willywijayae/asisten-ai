@@ -5,3 +5,8 @@ node_modules/
 *.log
 web/dist/
 .claude/
+
+# Hasil setup duplikat
+.setup-output.txt
+.setup-secrets.tmp.json
+wrangler.jsonc.bak

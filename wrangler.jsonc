@@ -57,6 +57,7 @@
     "FALLBACK_MODEL": "@cf/google/gemma-4-26b-a4b-it", // cadangan gratis (Workers AI, paket Free)
     "TIMEZONE_OFFSET": "+07:00",
     "PUBLIC_URL": "https://asisten-ai.willywijaya46.workers.dev",
+    "OWNER_NAME": "Willy",
     "OWNER_CHAT_ID": "1001715052"
   }
   // Secrets (pakai `npx wrangler secret put <NAMA>`):
