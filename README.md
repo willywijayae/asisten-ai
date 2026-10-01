@@ -35,7 +35,12 @@ Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Teleg
 ### Riset Kompetitor (Meta Ad Library)
 
 - Menu **Marketing → Riset Kompetitor**: daftar pantauan (kata kunci / page id), semua iklan kompetitor dengan **lama tayang** (iklan yang bertahan lama biasanya pemenang), angle, kekuatan hook, promo, dan klaim berisiko. Tombol **Analisis tim marketing** meminta agen Riset merangkum pola pemenang + 5 ide iklan (jadi catatan).
-- **Scan** dilakukan Claude lewat konektor Meta Ads (server ini tidak punya akses Ad Library untuk iklan komersial Indonesia): tool MCP `get_competitor_watchlist` → `ads_library_search` → `save_competitor_ads`. Atau kirim JSON ke `POST /api/competitors/ingest` dengan header `x-ingest-key: <INGEST_KEY>` (untuk tugas terjadwal).
+- **Scan lengkap (gambar, video, duplikat, urutan impresi)** dibaca langsung dari halaman Ad Library di browser oleh ekstraktor `web/public/adlibrary-extract.js`:
+  - **Bookmarklet "Kirim ke Second Brain"** (seret dari halaman Riset Kompetitor ke bookmark bar Chrome) → buka Ad Library, urutkan impresi, klik → data dibawa lewat `#fragment` ke `/impor-iklan` dan disimpan (Facebook memblokir fetch ke situs lain).
+  - **Claude dengan browser**: sama, ke `/impor-iklan#k=<INGEST_KEY>&d=...` atau tool MCP `save_competitor_ads`. Laporan bedah iklan lengkap disimpan dengan `save_competitor_report` (atau field `report` di ingest).
+  - Tanpa browser: `ads_library_search` dari konektor Meta (tanpa media). Endpoint mentah: `POST /api/competitors/ingest` + header `x-ingest-key`.
+- **Media**: gambar & sampul video disalin ke KV `MEDIA` (link Facebook kedaluwarsa); video iklan pemenang (impresi ≤10 / duplikat ≥3 / tayang ≥60 hari, ≤20 MB) juga disalin. Video lain diputar dari link terbaru (diperbarui tiap scan). Dicicil di cron 5 menit (batas 50 subrequest).
+- **Laporan bedah iklan** (tab Laporan): ringkasan, peta topik, pemenang dengan video, pola hook, peringatan klaim, rencana prioritas. Dibuat agen Riset (tombol) atau dikirim Claude.
 - **Penilaian**: [Jev AI](https://jev-ai.pro) kalau secret `JEV_API_KEY` diisi (`npx wrangler secret put JEV_API_KEY`); kalau kredit habis (402) / key salah → otomatis dinilai tim AI (Workers AI, gratis), Jev dicoba lagi 12 jam kemudian.
 - Kode: `src/competitors.ts`, `web/src/pages/Competitors.tsx`.
 

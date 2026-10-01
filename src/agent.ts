@@ -448,7 +448,7 @@ type ModelMessage = { content?: string | null; tool_calls?: ToolCall[] };
 class QuotaError extends Error {}
 
 /** Claude lewat Puter (user-pays: memakai jatah akun Puter pemilik). */
-async function callPuter(env: Env, model: string, messages: ChatMessage[], tools?: Tool[]): Promise<ModelMessage> {
+async function callPuter(env: Env, model: string, messages: ChatMessage[], tools?: Tool[], maxTokens = 4096): Promise<ModelMessage> {
   const res = await fetch("https://api.puter.com/drivers/call", {
     method: "POST",
     headers: { "Content-Type": "text/plain;actually=json", Authorization: `Bearer ${env.PUTER_AUTH_TOKEN}` },
@@ -456,7 +456,7 @@ async function callPuter(env: Env, model: string, messages: ChatMessage[], tools
       interface: "puter-chat-completion",
       driver: "ai-chat",
       method: "complete",
-      args: { messages, model, max_tokens: 4096, normalize: true, ...(tools ? { tools } : {}) },
+      args: { messages, model, max_tokens: maxTokens, normalize: true, ...(tools ? { tools } : {}) },
       auth_token: env.PUTER_AUTH_TOKEN,
     }),
   });
@@ -489,11 +489,17 @@ export async function puterPing(env: Env): Promise<{ ok: boolean; model: string;
 }
 
 /** Model gratis Workers AI (cadangan, atau utama kalau Puter tidak dipasang). */
-async function callWorkersAI(env: Env, messages: ChatMessage[], tools?: Tool[]): Promise<ModelMessage> {
+async function callWorkersAI(
+  env: Env,
+  messages: ChatMessage[],
+  tools?: Tool[],
+  extra: { maxTokens?: number; noThinking?: boolean } = {},
+): Promise<ModelMessage> {
   const res = (await env.AI.run(env.FALLBACK_MODEL as any, {
     messages,
     ...(tools ? { tools } : {}),
-    max_tokens: 4096,
+    max_tokens: extra.maxTokens ?? 4096,
+    ...(extra.noThinking ? { chat_template_kwargs: { enable_thinking: false } } : {}),
   } as any)) as ChatResponse;
   const msg = res.choices?.[0]?.message;
   if (!msg) throw new Error(`Respons Workers AI tidak terduga: ${JSON.stringify(res).slice(0, 300)}`);
@@ -506,7 +512,15 @@ async function callWorkersAI(env: Env, messages: ChatMessage[], tools?: Tool[]):
  */
 export async function complete(
   env: Env,
-  opts: { system: string; user: string; tier: "fast" | "smart"; actor: AgentId },
+  opts: {
+    system: string;
+    user: string;
+    tier: "fast" | "smart";
+    actor: AgentId;
+    maxTokens?: number;
+    /** Cadangan Workers AI tanpa mode berpikir (lebih cepat; aman untuk keluaran JSON panjang). */
+    noThinking?: boolean;
+  },
 ): Promise<{ text: string; model: string }> {
   const messages: ChatMessage[] = [
     { role: "system", content: opts.system },
@@ -515,7 +529,7 @@ export async function complete(
   if (env.PUTER_AUTH_TOKEN) {
     const model = opts.tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST;
     try {
-      const msg = await callPuter(env, model, messages);
+      const msg = await callPuter(env, model, messages, undefined, opts.maxTokens);
       const text = cleanText(msg.content);
       if (text) return { text, model };
     } catch (err) {
@@ -523,7 +537,7 @@ export async function complete(
       await logActivity(env, opts.actor, "step", err instanceof QuotaError ? "Jatah Puter habis, pakai otak cadangan" : "Puter tidak merespons, pakai otak cadangan");
     }
   }
-  const msg = await callWorkersAI(env, messages);
+  const msg = await callWorkersAI(env, messages, undefined, { maxTokens: opts.maxTokens, noThinking: opts.noThinking });
   return { text: cleanText(msg.content) || "(tidak ada hasil)", model: env.FALLBACK_MODEL };
 }
 

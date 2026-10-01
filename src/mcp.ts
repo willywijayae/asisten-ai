@@ -21,7 +21,7 @@ const INSTRUCTIONS = `Second Brain milik Willy: tugas/pengingat, catatan, profil
 - search_memory berisi fakta jangka panjang yang dikumpulkan dari obrolan (dengan tanggal; yang terbaru biasanya berlaku). Pakai remember_fact untuk menyimpan fakta penting baru tentang pemilik, timnya, atau bisnisnya.
 - Sebelum menambah tugas, cek list_tasks supaya tidak dobel. Tambah beberapa tugas sekaligus dengan add_tasks.
 - Setiap perubahan dikabarkan ke Telegram pemilik sebagai bukti.
-- Riset kompetitor: ambil daftar pantauan dengan get_competitor_watchlist, cari tiap kata kunci/halaman di Meta Ad Library (tool ads_library_search dari konektor Meta, negara sesuai daftar, ad_active_status ACTIVE), lalu kirim SEMUA hasilnya apa adanya dengan save_competitor_ads (satu panggilan per kata kunci/halaman). Penilaian & analisis dilakukan Second Brain.`;
+- Riset kompetitor: ambil daftar pantauan dengan get_competitor_watchlist. Kalau kamu punya browser, buka halaman Ad Library per kata kunci (urut impresi) dan jalankan ekstraktor dari get_competitor_watchlist supaya dapat gambar/video/duplikat/urutan impresi; kalau tidak, pakai ads_library_search (konektor Meta). Kirim hasilnya apa adanya dengan save_competitor_ads (satu panggilan per kata kunci/halaman). Untuk laporan bedah iklan yang lengkap, analisis lalu simpan dengan save_competitor_report.`;
 
 const taskShape = {
   title: z.string().describe("Judul tugas singkat, diawali kata kerja."),
@@ -51,7 +51,17 @@ async function write(env: Env, name: string, input: unknown) {
   return text(result);
 }
 
-const WRITES = new Set(["add_tasks", "update_task", "add_note", "update_note", "add_preference", "remember_fact", "save_competitor_ads", "track_competitor"]);
+const WRITES = new Set([
+  "add_tasks",
+  "update_task",
+  "add_note",
+  "update_note",
+  "add_preference",
+  "remember_fact",
+  "save_competitor_ads",
+  "save_competitor_report",
+  "track_competitor",
+]);
 
 /** Setiap panggilan tool dari Claude tampil di Kantor 3D (karakter "Claude"). */
 function withActivity(env: Env, server: McpServer): McpServer {
@@ -273,7 +283,7 @@ function buildServer(env: Env, ctx?: ExecutionContext): McpServer {
         ? s.watch.map((w) => `- ${w.kind === "page" ? `halaman ${w.label ?? ""} (page_id ${w.value})` : `kata kunci "${w.value}"`} · negara ${w.country}`).join("\n")
         : "(kosong — tanyakan pemilik kompetitor/kata kunci apa yang mau dipantau, lalu pakai track_competitor)";
       return text(
-        `DAFTAR PANTAUAN:\n${watch}\n\nTERSIMPAN: ${s.totals.ads} iklan dari ${s.totals.pages} halaman (${s.totals.active} aktif, ${s.totals.newWeek} baru minggu ini).\n\nCara scan: untuk tiap item, panggil ads_library_search (konektor Meta) dengan search_terms atau page_ids, countries=[negara], ad_active_status="ACTIVE", limit 50, lalu kirim hasilnya utuh ke save_competitor_ads.`,
+        `DAFTAR PANTAUAN:\n${watch}\n\nTERSIMPAN: ${s.totals.ads} iklan dari ${s.totals.pages} halaman (${s.totals.active} aktif, ${s.totals.newWeek} baru minggu ini).\n\nCARA SCAN (terbaik, butuh browser): buka https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=<NEGARA>&q=<KATA KUNCI>&search_type=keyword_unordered&media_type=all&sort_data[direction]=desc&sort_data[mode]=total_impressions lalu jalankan ekstraktor JavaScript dari ${env.PUBLIC_URL}/adlibrary-extract.js (await adLibraryExtract({scrolls:3})) dan kirim field ads-nya ke save_competitor_ads. TANPA browser: ads_library_search (konektor Meta) dengan search_terms/page_ids, countries=[negara], ad_active_status="ACTIVE", limit 50 (tanpa gambar/video).`,
       );
     },
   );
@@ -293,7 +303,10 @@ function buildServer(env: Env, ctx?: ExecutionContext): McpServer {
     },
     async ({ query, country, ads }) => {
       const r = await competitors.ingestAds(env, { source: "claude", query, country, ads });
-      const after = competitors.notifyScan(env, r).then(() => competitors.scorePending(env));
+      const after = competitors
+        .notifyScan(env, r)
+        .then(() => competitors.saveMedia(env))
+        .then(() => competitors.scorePending(env, 15));
       if (ctx) ctx.waitUntil(after.catch((err) => console.error("Pasca-simpan gagal", err)));
       else await after;
       return text(`Tersimpan: ${r.added} iklan baru, ${r.updated} diperbarui${r.skipped ? `, ${r.skipped} dilewati (tanpa id)` : ""}. Penilaian berjalan otomatis.`);
@@ -327,6 +340,38 @@ function buildServer(env: Env, ctx?: ExecutionContext): McpServer {
               .join("\n")
           : "Belum ada iklan kompetitor yang cocok.",
       );
+    },
+  );
+
+  server.registerTool(
+    "save_competitor_report",
+    {
+      title: "Simpan laporan bedah iklan",
+      description:
+        "Simpan laporan 'Bedah Iklan Kompetitor' terstruktur supaya tampil di website (dengan gambar/video iklan pemenang). winners.ad_id harus id iklan yang sudah disimpan lewat save_competitor_ads.",
+      inputSchema: {
+        title: z.string().min(3),
+        query: z.string().optional(),
+        data: z.object({
+          subtitle: z.string().optional(),
+          stats: z.array(z.object({ value: z.string(), label: z.string() })).max(4).optional(),
+          method: z.string().optional(),
+          summary: z.array(z.string()).min(1).max(7),
+          topics: z.array(z.object({ topic: z.string(), count: z.number(), hook: z.string() })).optional(),
+          topics_note: z.string().optional(),
+          winners: z.array(z.object({ ad_id: z.string(), title: z.string(), badge: z.string().optional(), hook: z.string().optional(), why: z.string() })),
+          others: z.array(z.object({ page: z.string(), hook: z.string(), running: z.string(), signal: z.string() })).optional(),
+          patterns: z.array(z.string()).optional(),
+          warning: z.string().optional(),
+          plan: z.array(z.object({ priority: z.string(), title: z.string(), steps: z.array(z.string()) })).optional(),
+          data_note: z.string().optional(),
+        }),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ title, query, data }) => {
+      const id = await competitors.saveReport(env, { title, query, data, author: "claude" });
+      return text(`Laporan tersimpan (#${id}). Lihat di website → Riset Kompetitor → Laporan.`);
     },
   );
 

@@ -23,7 +23,11 @@
   ],
 
   // Token & grant OAuth untuk konektor MCP (Claude).
-  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "e782c652cc4b4ec2928513dba219a827" }],
+  "kv_namespaces": [
+    // Gambar & video iklan kompetitor (link Facebook kedaluwarsa, jadi disalin ke sini).
+    { "binding": "MEDIA", "id": "74a435ed36a647c38656f38e1de07345" },
+    { "binding": "OAUTH_KV", "id": "e782c652cc4b4ec2928513dba219a827" }
+  ],
 
   // Update Telegram diantrekan dulu supaya webhook langsung balas 200,
   // lalu diproses di consumer (boleh jalan sampai 15 menit).

@@ -23,6 +23,8 @@ export interface Env {
   PUBLIC_URL: string;
   /** Penyimpanan OAuth (konektor MCP) & helper yang disuntikkan OAuthProvider. */
   OAUTH_KV: KVNamespace;
+  /** Media iklan kompetitor (gambar, sampul video, video pemenang). */
+  MEDIA: KVNamespace;
   OAUTH_PROVIDER: OAuthHelpers;
   /** OAuth client Google (opsional) untuk Gmail & Drive. */
   GOOGLE_CLIENT_ID?: string;

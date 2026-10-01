@@ -12,11 +12,14 @@ import { System } from "./pages/System";
 import { Profile } from "./pages/Profile";
 import { Office } from "./pages/Office";
 import { Competitors } from "./pages/Competitors";
+import { ImportAds } from "./pages/ImportAds";
 
 export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [pending, setPending] = useState(0);
   const { path, navigate } = useRouter();
+  // Dicatat sekali di awal: halaman impor langsung menghapus #kunci dari URL.
+  const [keyedImport] = useState(() => window.location.pathname.startsWith("/impor-iklan") && window.location.hash.includes("k="));
 
   useEffect(() => {
     api("/me")
@@ -43,12 +46,15 @@ export function App() {
     navigate("/");
   };
 
+  // Impor dari Claude/tugas terjadwal membawa kuncinya sendiri, jadi tidak perlu login.
+  if (keyedImport) return <ImportAds />;
   if (authed === null) return <Spinner />;
   if (!authed) return <Login onLoggedIn={() => setAuthed(true)} />;
 
   let page;
   if (path === "/") page = <Dashboard onChanged={refreshBadges} />;
   else if (path.startsWith("/kompetitor")) page = <Competitors />;
+  else if (path.startsWith("/impor-iklan")) page = <ImportAds />;
   else if (path.startsWith("/kantor")) page = <Office onChanged={refreshBadges} />;
   else if (path.startsWith("/tugas")) page = <Tasks onChanged={refreshBadges} />;
   else if (path.startsWith("/catatan")) page = <Notes />;

@@ -126,6 +126,8 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
   }
 
   // Hasil scan iklan kompetitor dari luar website (mis. tugas terjadwal Claude), pakai kunci rahasia.
+  // Hasil scan iklan kompetitor dari luar website (tugas terjadwal Claude, halaman impor), pakai kunci rahasia.
+  // Versi dengan sesi login: POST /competitors/import (di bawah).
   if (path === "/competitors/ingest" && method === "POST") {
     const key = req.headers.get("x-ingest-key") ?? "";
     const enc = new TextEncoder();
@@ -134,21 +136,7 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
       key.length === env.INGEST_KEY.length &&
       crypto.subtle.timingSafeEqual(enc.encode(key), enc.encode(env.INGEST_KEY));
     if (!ok) throw new HttpError(403, "Kunci salah");
-    const b = await readJson(req);
-    const scans: { query?: string; country?: string; ads: unknown[] }[] = Array.isArray(b.scans) ? b.scans : [b];
-    const totals = { found: 0, added: 0, updated: 0, skipped: 0 };
-    for (const s of scans.slice(0, 20)) {
-      if (!Array.isArray(s.ads)) continue;
-      const r = await competitors.ingestAds(env, { source: String(b.source ?? "jadwal"), query: s.query, country: s.country, ads: s.ads });
-      for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += r[k];
-    }
-    ctx.waitUntil(
-      competitors
-        .notifyScan(env, totals)
-        .then(() => competitors.scorePending(env))
-        .catch((err) => console.error("Pasca-ingest gagal", err)),
-    );
-    return json(totals);
+    return json(await ingestScans(env, ctx, await readJson(req), "jadwal"));
   }
 
   if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
@@ -324,7 +312,28 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
     if (!(await competitors.deleteWatch(env, Number(watchMatch[1])))) throw new HttpError(404, "Tidak ditemukan");
     return json({ ok: true });
   }
+  if (path === "/competitors/import" && method === "POST") return json(await ingestScans(env, ctx, await readJson(req), "browser"));
   if (path === "/competitors/score" && method === "POST") return json(await competitors.scorePending(env));
+  if (path === "/competitors/media/save" && method === "POST") return json(await competitors.saveMedia(env));
+  const mediaMatch = /^\/competitors\/media\/(\d+)\/(\d+)\/(image|poster|video)$/.exec(path);
+  if (mediaMatch && method === "GET") {
+    return competitors.serveMedia(env, mediaMatch[1], Number(mediaMatch[2]), mediaMatch[3] as "image" | "poster" | "video", req);
+  }
+  if (path === "/competitors/reports" && method === "GET") return json({ reports: await competitors.listReports(env) });
+  if (path === "/competitors/reports" && method === "POST") {
+    const { query } = await readJson(req);
+    try {
+      return json({ id: await competitors.generateReport(env, query ? String(query) : undefined) }, 201);
+    } catch (e) {
+      throw new HttpError(400, e instanceof Error ? e.message : String(e));
+    }
+  }
+  const reportMatch = /^\/competitors\/reports\/(\d+)$/.exec(path);
+  if (reportMatch && method === "GET") {
+    const r = await competitors.getReport(env, Number(reportMatch[1]));
+    if (!r) throw new HttpError(404, "Laporan tidak ditemukan");
+    return json(r);
+  }
   if (path === "/competitors/analyze" && method === "POST") {
     const { page } = await readJson(req);
     try {
@@ -468,4 +477,32 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
   }
 
   throw new HttpError(404, "Endpoint tidak ditemukan");
+}
+
+/** Simpan satu/lebih hasil scan (+ laporan opsional), lalu media & penilaian dicicil di latar belakang. */
+async function ingestScans(env: Env, ctx: ExecutionContext, b: any, defaultSource: string) {
+  const scans: { query?: string; country?: string; ads: unknown[] }[] = Array.isArray(b?.scans) ? b.scans : b?.ads ? [b] : [];
+  const totals = { found: 0, added: 0, updated: 0, skipped: 0 };
+  for (const s of scans.slice(0, 20)) {
+    if (!Array.isArray(s.ads)) continue;
+    const r = await competitors.ingestAds(env, { source: String(b.source ?? defaultSource), query: s.query, country: s.country, ads: s.ads });
+    for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += r[k];
+  }
+  // Laporan bedah iklan dari Claude (opsional, dikirim bersama atau terpisah dari hasil scan).
+  let reportId: number | null = null;
+  if (b?.report?.data) {
+    try {
+      reportId = await competitors.saveReport(env, { title: String(b.report.title ?? ""), query: b.report.query, data: b.report.data, author: "claude" });
+    } catch (e) {
+      throw new HttpError(400, `Laporan tidak valid: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  ctx.waitUntil(
+    competitors
+      .notifyScan(env, totals)
+      .then(() => competitors.saveMedia(env))
+      .then(() => competitors.scorePending(env, 15))
+      .catch((err) => console.error("Pasca-ingest gagal", err)),
+  );
+  return { ...totals, reportId };
 }

@@ -8,7 +8,7 @@ import { sendBriefing } from "./briefing";
 import { clip, logActivity, pruneActivity } from "./activity";
 import { extractMemories, reindexAll } from "./memory";
 import { weeklyReview } from "./ceo";
-import { scorePending } from "./competitors";
+import { saveMedia, scorePending } from "./competitors";
 import { handleApi } from "./api";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp";
@@ -125,10 +125,14 @@ const app = {
 
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
     if (!env.OWNER_CHAT_ID) return;
-    if (event.cron === "*/5 * * * *") await sendReminders(env);
+    if (event.cron === "*/5 * * * *") {
+      await sendReminders(env);
+      // Sisa pekerjaan riset kompetitor dicicil kecil-kecil (batas 50 subrequest per pemanggilan).
+      await saveMedia(env, 12).catch((err) => console.error("Gagal menyimpan media kompetitor", err));
+      await scorePending(env, 12).catch((err) => console.error("Gagal menilai iklan kompetitor", err));
+    }
     else if (event.cron === "0 0 * * *") {
       await pruneActivity(env).catch((err) => console.error("Gagal membersihkan aktivitas", err));
-      await scorePending(env).catch((err) => console.error("Gagal menilai iklan kompetitor", err));
       await sendBriefing(env, "morning");
     }
     else if (event.cron === "0 14 * * *") await sendBriefing(env, "evening");

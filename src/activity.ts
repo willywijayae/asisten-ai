@@ -74,6 +74,7 @@ export const TOOL_ACTIVITY: Record<string, { label: string; spot?: Spot }> = {
   get_competitor_watchlist: { label: "Membaca daftar pantauan kompetitor", spot: "mboard" },
   save_competitor_ads: { label: "Menyetor hasil scan iklan kompetitor", spot: "visit:riset" },
   get_competitor_ads: { label: "Membaca iklan kompetitor", spot: "mboard" },
+  save_competitor_report: { label: "Menyetor laporan bedah iklan", spot: "mboard" },
   track_competitor: { label: "Menambah kompetitor ke pantauan", spot: "mboard" },
   delegate_marketing: { label: "Menyerahkan ke tim marketing", spot: "visit:manajer_marketing" },
   search_memory: { label: "Mencari di memori jangka panjang", spot: "cabinet" },
