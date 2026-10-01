@@ -10,6 +10,7 @@ import { localDayRange, localToUtc } from "./time";
 import { officeState } from "./activity";
 import * as memory from "./memory";
 import { weeklyReview } from "./ceo";
+import * as competitors from "./competitors";
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(data, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -122,6 +123,32 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
     } catch (e) {
       return back({ google: "error", message: e instanceof Error ? e.message : String(e) });
     }
+  }
+
+  // Hasil scan iklan kompetitor dari luar website (mis. tugas terjadwal Claude), pakai kunci rahasia.
+  if (path === "/competitors/ingest" && method === "POST") {
+    const key = req.headers.get("x-ingest-key") ?? "";
+    const enc = new TextEncoder();
+    const ok =
+      !!env.INGEST_KEY &&
+      key.length === env.INGEST_KEY.length &&
+      crypto.subtle.timingSafeEqual(enc.encode(key), enc.encode(env.INGEST_KEY));
+    if (!ok) throw new HttpError(403, "Kunci salah");
+    const b = await readJson(req);
+    const scans: { query?: string; country?: string; ads: unknown[] }[] = Array.isArray(b.scans) ? b.scans : [b];
+    const totals = { found: 0, added: 0, updated: 0, skipped: 0 };
+    for (const s of scans.slice(0, 20)) {
+      if (!Array.isArray(s.ads)) continue;
+      const r = await competitors.ingestAds(env, { source: String(b.source ?? "jadwal"), query: s.query, country: s.country, ads: s.ads });
+      for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += r[k];
+    }
+    ctx.waitUntil(
+      competitors
+        .notifyScan(env, totals)
+        .then(() => competitors.scorePending(env))
+        .catch((err) => console.error("Pasca-ingest gagal", err)),
+    );
+    return json(totals);
   }
 
   if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
@@ -265,6 +292,45 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
       if (!(await db.deleteNote(env.DB, id))) throw new HttpError(404, "Catatan tidak ditemukan");
       await memory.unindexNote(env, id);
       return json({ ok: true });
+    }
+  }
+
+  // --- Riset kompetitor (Meta Ad Library) ---
+  if (path === "/competitors" && method === "GET") return json(await competitors.summary(env));
+  if (path === "/competitors/ads" && method === "GET") {
+    const p = url.searchParams;
+    return json({
+      ads: await competitors.listAds(env, {
+        page: p.get("page") || undefined,
+        angle: p.get("angle") || undefined,
+        active: p.get("active") === "1",
+        q: p.get("q")?.trim() || undefined,
+        sort: p.get("sort") || undefined,
+        limit: Number(p.get("limit")) || 100,
+      }),
+    });
+  }
+  if (path === "/competitors/watch" && method === "POST") {
+    const b = await readJson(req);
+    try {
+      await competitors.addWatch(env, { kind: String(b.kind), value: String(b.value ?? ""), label: b.label, country: b.country });
+    } catch (e) {
+      throw new HttpError(400, e instanceof Error ? e.message : String(e));
+    }
+    return json({ ok: true }, 201);
+  }
+  const watchMatch = /^\/competitors\/watch\/(\d+)$/.exec(path);
+  if (watchMatch && method === "DELETE") {
+    if (!(await competitors.deleteWatch(env, Number(watchMatch[1])))) throw new HttpError(404, "Tidak ditemukan");
+    return json({ ok: true });
+  }
+  if (path === "/competitors/score" && method === "POST") return json(await competitors.scorePending(env));
+  if (path === "/competitors/analyze" && method === "POST") {
+    const { page } = await readJson(req);
+    try {
+      return json(await competitors.analyze(env, page ? String(page) : undefined));
+    } catch (e) {
+      throw new HttpError(400, e instanceof Error ? e.message : String(e));
     }
   }
 

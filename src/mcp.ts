@@ -8,6 +8,7 @@ import { executeTool, receipt, type RunContext } from "./agent";
 import { Telegram } from "./telegram";
 import { logTool } from "./activity";
 import * as memory from "./memory";
+import * as competitors from "./competitors";
 import { localDayRange, nowContext } from "./time";
 
 // Server MCP "Second Brain": membuka tugas, catatan, profil & preferensi pemilik ke Claude
@@ -19,7 +20,8 @@ const INSTRUCTIONS = `Second Brain milik Willy: tugas/pengingat, catatan, profil
 - Baca get_profile di awal untuk memahami pemilik, dan patuhi preferensinya.
 - search_memory berisi fakta jangka panjang yang dikumpulkan dari obrolan (dengan tanggal; yang terbaru biasanya berlaku). Pakai remember_fact untuk menyimpan fakta penting baru tentang pemilik, timnya, atau bisnisnya.
 - Sebelum menambah tugas, cek list_tasks supaya tidak dobel. Tambah beberapa tugas sekaligus dengan add_tasks.
-- Setiap perubahan dikabarkan ke Telegram pemilik sebagai bukti.`;
+- Setiap perubahan dikabarkan ke Telegram pemilik sebagai bukti.
+- Riset kompetitor: ambil daftar pantauan dengan get_competitor_watchlist, cari tiap kata kunci/halaman di Meta Ad Library (tool ads_library_search dari konektor Meta, negara sesuai daftar, ad_active_status ACTIVE), lalu kirim SEMUA hasilnya apa adanya dengan save_competitor_ads (satu panggilan per kata kunci/halaman). Penilaian & analisis dilakukan Second Brain.`;
 
 const taskShape = {
   title: z.string().describe("Judul tugas singkat, diawali kata kerja."),
@@ -49,7 +51,7 @@ async function write(env: Env, name: string, input: unknown) {
   return text(result);
 }
 
-const WRITES = new Set(["add_tasks", "update_task", "add_note", "update_note", "add_preference", "remember_fact"]);
+const WRITES = new Set(["add_tasks", "update_task", "add_note", "update_note", "add_preference", "remember_fact", "save_competitor_ads", "track_competitor"]);
 
 /** Setiap panggilan tool dari Claude tampil di Kantor 3D (karakter "Claude"). */
 function withActivity(env: Env, server: McpServer): McpServer {
@@ -68,7 +70,7 @@ function withActivity(env: Env, server: McpServer): McpServer {
   return server;
 }
 
-function buildServer(env: Env): McpServer {
+function buildServer(env: Env, ctx?: ExecutionContext): McpServer {
   const server = withActivity(env, new McpServer({ name: "second-brain", version: "1.0.0" }, { instructions: INSTRUCTIONS }));
   const tz = env.TIMEZONE_OFFSET;
   const readOnly = { readOnlyHint: true, openWorldHint: false };
@@ -258,6 +260,96 @@ function buildServer(env: Env): McpServer {
   );
 
   server.registerTool(
+    "get_competitor_watchlist",
+    {
+      title: "Daftar pantauan kompetitor",
+      description:
+        "Kata kunci & halaman kompetitor yang harus dipindai di Meta Ad Library, plus ringkasan iklan yang sudah tersimpan. Pakai sebelum scan kompetitor.",
+      annotations: readOnly,
+    },
+    async () => {
+      const s = await competitors.summary(env);
+      const watch = s.watch.length
+        ? s.watch.map((w) => `- ${w.kind === "page" ? `halaman ${w.label ?? ""} (page_id ${w.value})` : `kata kunci "${w.value}"`} · negara ${w.country}`).join("\n")
+        : "(kosong — tanyakan pemilik kompetitor/kata kunci apa yang mau dipantau, lalu pakai track_competitor)";
+      return text(
+        `DAFTAR PANTAUAN:\n${watch}\n\nTERSIMPAN: ${s.totals.ads} iklan dari ${s.totals.pages} halaman (${s.totals.active} aktif, ${s.totals.newWeek} baru minggu ini).\n\nCara scan: untuk tiap item, panggil ads_library_search (konektor Meta) dengan search_terms atau page_ids, countries=[negara], ad_active_status="ACTIVE", limit 50, lalu kirim hasilnya utuh ke save_competitor_ads.`,
+      );
+    },
+  );
+
+  server.registerTool(
+    "save_competitor_ads",
+    {
+      title: "Simpan iklan kompetitor",
+      description:
+        "Simpan hasil pencarian Meta Ad Library (array ads dari ads_library_search, apa adanya) ke modul Riset Kompetitor. Iklan baru akan dinilai otomatis (angle, hook, promo, klaim berisiko).",
+      inputSchema: {
+        query: z.string().optional().describe("Kata kunci atau nama halaman yang dicari."),
+        country: z.string().length(2).optional().describe("Kode negara ISO-2, default ID."),
+        ads: z.array(z.record(z.string(), z.unknown())).min(1).max(100).describe("Daftar iklan persis dari ads_library_search."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ query, country, ads }) => {
+      const r = await competitors.ingestAds(env, { source: "claude", query, country, ads });
+      const after = competitors.notifyScan(env, r).then(() => competitors.scorePending(env));
+      if (ctx) ctx.waitUntil(after.catch((err) => console.error("Pasca-simpan gagal", err)));
+      else await after;
+      return text(`Tersimpan: ${r.added} iklan baru, ${r.updated} diperbarui${r.skipped ? `, ${r.skipped} dilewati (tanpa id)` : ""}. Penilaian berjalan otomatis.`);
+    },
+  );
+
+  server.registerTool(
+    "get_competitor_ads",
+    {
+      title: "Lihat iklan kompetitor",
+      description: "Iklan kompetitor tersimpan beserta lama tayang & penilaiannya. Urut default: paling lama tayang (biasanya iklan pemenang).",
+      inputSchema: {
+        page_id: z.string().optional(),
+        query: z.string().optional().describe("Cari di nama halaman/judul/teks."),
+        sort: z.enum(["lama", "baru", "hook"]).optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+      },
+      annotations: readOnly,
+    },
+    async ({ page_id, query, sort, limit = 30 }) => {
+      const ads = await competitors.listAds(env, { page: page_id, q: query, sort, limit });
+      return text(
+        ads.length
+          ? ads
+              .map(
+                (a) =>
+                  `${a.page_name} · tayang ${a.days} hari${a.active ? " (aktif)" : ""} · angle ${a.angle ? competitors.ANGLES[a.angle] : "?"} · hook ${
+                    a.hook != null ? competitors.HOOK_LEVELS[a.hook] : "?"
+                  }${a.promo ? " · promo" : ""}${a.risky ? " · klaim berisiko" : ""}\n  ${[a.title, a.body].filter(Boolean).join(" — ").slice(0, 300)}\n  ${a.snapshot_url}`,
+              )
+              .join("\n")
+          : "Belum ada iklan kompetitor yang cocok.",
+      );
+    },
+  );
+
+  server.registerTool(
+    "track_competitor",
+    {
+      title: "Pantau kompetitor",
+      description: "Tambahkan kata kunci atau halaman kompetitor (page_id dari Ad Library) ke daftar pantauan.",
+      inputSchema: {
+        kind: z.enum(["keyword", "page"]),
+        value: z.string().min(1).describe("Kata kunci, atau page_id (angka)."),
+        label: z.string().optional().describe("Nama halaman (untuk page)."),
+        country: z.string().length(2).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async (w) => {
+      await competitors.addWatch(env, w);
+      return text(`Ditambahkan ke daftar pantauan: ${w.kind === "page" ? `halaman ${w.label ?? w.value}` : `"${w.value}"`}.`);
+    },
+  );
+
+  server.registerTool(
     "get_profile",
     {
       title: "Profil & preferensi",
@@ -290,8 +382,8 @@ function buildServer(env: Env): McpServer {
 
 /** Handler /mcp (dipanggil OAuthProvider setelah token valid). Stateless: satu server per request. */
 export const mcpHandler = {
-  async fetch(req: Request, env: Env): Promise<Response> {
-    const server = buildServer(env);
+  async fetch(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+    const server = buildServer(env, ctx);
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     await server.connect(transport);
     return transport.handleRequest(req);

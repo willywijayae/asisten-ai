@@ -32,6 +32,13 @@ Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Teleg
 - **Manajer Operasional** membawahi Haiku, Opus, Whisper, Gemma, Pengingat, Briefing, dan Claude. Memeriksa kesehatan tim tanpa AI (kendala, jatah Puter, beban kerja), dimasukkan ke briefing, dan di Kantor 3D menghampiri agen yang bermasalah (`src/ops.ts`).
 - **Manajer Marketing** menerima permintaan marketing dari Haiku (tool `delegate_marketing`) dan menugaskan **Copywriter**, **Perencana Konten**, **Analis Iklan**, atau **Riset**. Hasilnya dikirim utuh ke pemilik dan disimpan sebagai catatan bertag `marketing` (`src/marketing.ts`).
 
+### Riset Kompetitor (Meta Ad Library)
+
+- Menu **Marketing → Riset Kompetitor**: daftar pantauan (kata kunci / page id), semua iklan kompetitor dengan **lama tayang** (iklan yang bertahan lama biasanya pemenang), angle, kekuatan hook, promo, dan klaim berisiko. Tombol **Analisis tim marketing** meminta agen Riset merangkum pola pemenang + 5 ide iklan (jadi catatan).
+- **Scan** dilakukan Claude lewat konektor Meta Ads (server ini tidak punya akses Ad Library untuk iklan komersial Indonesia): tool MCP `get_competitor_watchlist` → `ads_library_search` → `save_competitor_ads`. Atau kirim JSON ke `POST /api/competitors/ingest` dengan header `x-ingest-key: <INGEST_KEY>` (untuk tugas terjadwal).
+- **Penilaian**: [Jev AI](https://jev-ai.pro) kalau secret `JEV_API_KEY` diisi (`npx wrangler secret put JEV_API_KEY`); kalau kredit habis (402) / key salah → otomatis dinilai tim AI (Workers AI, gratis), Jev dicoba lagi 12 jam kemudian.
+- Kode: `src/competitors.ts`, `web/src/pages/Competitors.tsx`.
+
 ### Memori jangka panjang (ala [mem0](https://github.com/mem0ai/mem0), gratis)
 
 - Setelah tiap obrolan (Telegram & Chat AI), Gemma di Workers AI mengambil **fakta tahan lama** (tim, klien, rencana, angka) dan menyimpannya ke tabel `memories`. Fakta hanya ditambah, tidak pernah ditimpa; yang mirip ≥ 0,9 dengan fakta lama dilewati.

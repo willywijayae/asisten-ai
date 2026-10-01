@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Box, Brain, CheckSquare, LayoutDashboard, MessageCircle, Settings, UserRound, type LucideIcon } from "lucide-react";
+import { Box, Brain, CheckSquare, Radar, LayoutDashboard, MessageCircle, Settings, UserRound, type LucideIcon } from "lucide-react";
 import { useRouter } from "./app-context";
 
 export interface NavItem {
@@ -22,6 +22,10 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { path: "/chat", label: "Chat AI", short: "Chat", icon: MessageCircle },
       { path: "/profil", label: "Profil & Memori", short: "Profil", icon: UserRound },
     ],
+  },
+  {
+    group: "Marketing",
+    items: [{ path: "/kompetitor", label: "Riset Kompetitor", short: "Kompetitor", icon: Radar }],
   },
   {
     group: "Lainnya",
@@ -91,12 +95,12 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
         <div className={`mx-auto ${path.startsWith("/kantor") ? "max-w-7xl" : "max-w-5xl"}`}>{children}</div>
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface/95 backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex overflow-x-auto border-t border-line bg-surface/95 backdrop-blur md:hidden">
         {all.map((item) => (
           <Link
             key={item.path}
             to={item.path}
-            className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] ${active(item.path) ? "text-accent" : "text-muted"}`}
+            className={`relative flex min-w-16 flex-1 shrink-0 flex-col items-center gap-0.5 py-2 text-[10px] ${active(item.path) ? "text-accent" : "text-muted"}`}
           >
             <item.icon className="size-5" />
             {item.short}

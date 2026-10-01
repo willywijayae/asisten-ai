@@ -11,6 +11,7 @@ import { Chat } from "./pages/Chat";
 import { System } from "./pages/System";
 import { Profile } from "./pages/Profile";
 import { Office } from "./pages/Office";
+import { Competitors } from "./pages/Competitors";
 
 export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -47,6 +48,7 @@ export function App() {
 
   let page;
   if (path === "/") page = <Dashboard onChanged={refreshBadges} />;
+  else if (path.startsWith("/kompetitor")) page = <Competitors />;
   else if (path.startsWith("/kantor")) page = <Office onChanged={refreshBadges} />;
   else if (path.startsWith("/tugas")) page = <Tasks onChanged={refreshBadges} />;
   else if (path.startsWith("/catatan")) page = <Notes />;

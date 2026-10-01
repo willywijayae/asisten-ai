@@ -8,6 +8,7 @@ import { sendBriefing } from "./briefing";
 import { clip, logActivity, pruneActivity } from "./activity";
 import { extractMemories, reindexAll } from "./memory";
 import { weeklyReview } from "./ceo";
+import { scorePending } from "./competitors";
 import { handleApi } from "./api";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp";
@@ -127,6 +128,7 @@ const app = {
     if (event.cron === "*/5 * * * *") await sendReminders(env);
     else if (event.cron === "0 0 * * *") {
       await pruneActivity(env).catch((err) => console.error("Gagal membersihkan aktivitas", err));
+      await scorePending(env).catch((err) => console.error("Gagal menilai iklan kompetitor", err));
       await sendBriefing(env, "morning");
     }
     else if (event.cron === "0 14 * * *") await sendBriefing(env, "evening");

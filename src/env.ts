@@ -29,4 +29,9 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string;
   /** Kunci enkripsi token Google di database. */
   ENCRYPTION_KEY?: string;
+  /** API key Jev AI (opsional) untuk menilai iklan kompetitor; tanpa ini dinilai tim AI sendiri. */
+  JEV_API_KEY?: string;
+  JEV_MODEL?: string;
+  /** Kunci untuk mengirim hasil scan iklan kompetitor dari luar (mis. tugas terjadwal Claude). */
+  INGEST_KEY?: string;
 }
