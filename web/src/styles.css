@@ -64,6 +64,24 @@ body {
   color: var(--fg);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+}
+
+html { -webkit-tap-highlight-color: transparent; }
+img, video, canvas, svg { max-width: 100%; }
+pre, code { overflow-wrap: anywhere; }
+
+/* Area aman (notch / home bar) untuk navigasi bawah di HP. */
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-top { padding-top: env(safe-area-inset-top); }
+
+/* HP: font input min 16px agar iOS tidak zoom saat fokus, target sentuh >= 40px. */
+@media (max-width: 767px) {
+  input, select, textarea, .input { font-size: 16px !important; }
+  button, [role="button"], select { min-height: 40px; }
+  table { font-size: 12px; }
 }
 
 ::selection {

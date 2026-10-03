@@ -18,7 +18,7 @@ export function Button({
   children,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: "sm" | "md"; loading?: boolean }) {
-  const sizing = size === "sm" ? "h-8 px-2.5 text-xs gap-1.5" : "h-9 px-3.5 text-sm gap-2";
+  const sizing = size === "sm" ? "h-9 px-3 max-md:h-10 text-xs gap-1.5" : "h-9 px-3.5 text-sm gap-2";
   return (
     <button
       {...props}
@@ -111,7 +111,7 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         onMouseDown={(e) => e.stopPropagation()}
-        className={`flex max-h-[92vh] w-full flex-col rounded-t-2xl border border-line bg-surface shadow-xl sm:rounded-2xl ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"}`}
+        className={`flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-line bg-surface shadow-xl sm:rounded-2xl ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"}`}
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <h3 className="text-sm font-semibold">{title}</h3>

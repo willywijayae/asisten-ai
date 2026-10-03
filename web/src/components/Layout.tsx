@@ -59,7 +59,7 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
   const all = NAV.flatMap((g) => g.items);
 
   return (
-    <div className="min-h-screen md:flex">
+    <div className="min-h-dvh md:flex">
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-surface px-3 py-5 md:flex">
         <div className="mb-6 flex items-center gap-2 px-2">
           <div className="flex size-8 items-center justify-center rounded-lg bg-accent text-accent-fg">
@@ -94,16 +94,16 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
         </nav>
       </aside>
 
-      <main className="min-w-0 flex-1 px-4 pb-24 pt-6 md:px-10 md:pb-10 md:pt-8">
+      <main className="min-w-0 flex-1 px-4 pb-28 pt-6 md:px-10 md:pb-10 md:pt-8">
         <div className={`mx-auto ${path.startsWith("/kantor") ? "max-w-7xl" : "max-w-5xl"}`}>{children}</div>
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex overflow-x-auto border-t border-line bg-surface/95 backdrop-blur md:hidden">
+      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 flex overflow-x-auto overscroll-x-contain border-t border-line bg-surface/95 backdrop-blur md:hidden [scrollbar-width:none]">
         {all.map((item) => (
           <Link
             key={item.path}
             to={item.path}
-            className={`relative flex min-w-16 flex-1 shrink-0 flex-col items-center gap-0.5 py-2 text-[10px] ${active(item.path) ? "text-accent" : "text-muted"}`}
+            className={`relative flex min-w-16 flex-1 shrink-0 flex-col items-center gap-0.5 py-2.5 text-[10px] ${active(item.path) ? "text-accent" : "text-muted"}`}
           >
             <item.icon className="size-5" />
             {item.short}

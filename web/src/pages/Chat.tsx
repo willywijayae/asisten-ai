@@ -86,7 +86,7 @@ export function Chat({ onChanged }: { onChanged: () => void }) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-8.5rem)] flex-col md:h-[calc(100vh-4.5rem)]">
+    <div className="flex h-[calc(100dvh-9.5rem)] flex-col md:h-[calc(100dvh-4.5rem)]">
       <div className="mb-4">
         <h1 className="text-xl font-semibold tracking-tight">Chat AI</h1>
         <p className="mt-0.5 text-sm text-muted">Otak yang sama dengan bot Telegram. Riwayatnya juga sama.</p>
@@ -171,10 +171,10 @@ export function Chat({ onChanged }: { onChanged: () => void }) {
               }
             }}
             rows={1}
-            placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)"
+            placeholder="Tulis pesan…"
             className="input max-h-40 min-h-10 resize-none"
           />
-          <Button type="submit" variant="primary" className="size-10 !px-0" disabled={!input.trim() || sending} aria-label="Kirim">
+          <Button type="submit" variant="primary" className="size-11 !px-0" disabled={!input.trim() || sending} aria-label="Kirim">
             <ArrowUp className="size-4" />
           </Button>
         </form>
