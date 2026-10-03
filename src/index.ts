@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import type { Env, JobMessage } from "./env";
 import * as db from "./db";
-import { puterPing, runAgent, type UserPart } from "./agent";
+import { runAgent, type UserPart } from "./agent";
 import { Telegram, type TgCallbackQuery, type TgMessage, type TgUpdate } from "./telegram";
 import { formatLocal } from "./time";
 import { sendBriefing } from "./briefing";
@@ -95,8 +95,7 @@ const app = {
         bot: `@${bot.username}`,
         webhook: info,
         owner_set: !!env.OWNER_CHAT_ID,
-        puter: !!env.PUTER_AUTH_TOKEN,
-        ...(url.searchParams.has("ping") ? { puterPing: await puterPing(env) } : {}),
+        hermes_api: !!env.HERMES_API_ENDPOINT,
         ...(url.searchParams.has("reindex") ? { reindex: await reindexAll(env) } : {}),
       });
     }

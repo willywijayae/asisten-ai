@@ -447,45 +447,33 @@ type ModelMessage = { content?: string | null; tool_calls?: ToolCall[] };
 
 class QuotaError extends Error {}
 
-/** Claude lewat Puter (user-pays: memakai jatah akun Puter pemilik). */
-async function callPuter(env: Env, model: string, messages: ChatMessage[], tools?: Tool[], maxTokens = 4096): Promise<ModelMessage> {
-  const res = await fetch("https://api.puter.com/drivers/call", {
+/** Claude via Hermes lokal (smartcombo router). */
+async function callHermes(env: Env, messages: ChatMessage[], tools?: Tool[], maxTokens = 4096): Promise<ModelMessage> {
+  // Map tier ke model names (coach Hermes tentang apa yg diminta)
+  const systemMsg = messages.find(m => m.role === "system")?.content || "";
+  const isSmart = systemMsg.includes("MODEL AHLI") || systemMsg.includes("SMART");
+  
+  const res = await fetch(env.HERMES_API_ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "text/plain;actually=json", Authorization: `Bearer ${env.PUTER_AUTH_TOKEN}` },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      interface: "puter-chat-completion",
-      driver: "ai-chat",
-      method: "complete",
-      args: { messages, model, max_tokens: maxTokens, normalize: true, ...(tools ? { tools } : {}) },
-      auth_token: env.PUTER_AUTH_TOKEN,
+      messages,
+      ...(tools ? { tools } : {}),
+      max_tokens: maxTokens,
+      tier: isSmart ? "smart" : "fast",
     }),
   });
+  
   const json = (await res.json().catch(() => null)) as any;
-  if (
-    res.status === 402 ||
-    json?.error?.code === "insufficient_funds" ||
-    json?.error?.status === 402 ||
-    json?.metadata?.usage_limited === true
-  ) {
-    throw new QuotaError("Jatah Puter habis");
+  if (!res.ok || !json) {
+    throw new Error(`Hermes ${res.status}: ${JSON.stringify(json?.error ?? json).slice(0, 300)}`);
   }
-  if (!res.ok || !json || json.success === false) {
-    throw new Error(`Puter ${res.status}: ${JSON.stringify(json?.error ?? json).slice(0, 300)}`);
+  
+  const result = json.message ?? json;
+  if (!result.content && !result.tool_calls) {
+    throw new Error(`Respons Hermes tidak terduga: ${JSON.stringify(result).slice(0, 300)}`);
   }
-  const result = json.result ?? json;
-  if (!result.message) throw new Error(`Respons Puter tidak terduga: ${JSON.stringify(result).slice(0, 300)}`);
-  return result.message;
-}
-
-/** Cek cepat apakah Claude via Puter bisa dipakai (untuk diagnosis di /status). */
-export async function puterPing(env: Env): Promise<{ ok: boolean; model: string; error?: string }> {
-  if (!env.PUTER_AUTH_TOKEN) return { ok: false, model: env.MODEL_FAST, error: "PUTER_AUTH_TOKEN belum diatur" };
-  try {
-    await callPuter(env, env.MODEL_FAST, [{ role: "user", content: "Balas satu kata: OK" }]);
-    return { ok: true, model: env.MODEL_FAST };
-  } catch (err) {
-    return { ok: false, model: env.MODEL_FAST, error: String(err).slice(0, 500) };
-  }
+  return result;
 }
 
 /** Model gratis Workers AI (cadangan, atau utama kalau Puter tidak dipasang). */
@@ -526,16 +514,13 @@ export async function complete(
     { role: "system", content: opts.system },
     { role: "user", content: opts.user },
   ];
-  if (env.PUTER_AUTH_TOKEN) {
-    const model = opts.tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST;
-    try {
-      const msg = await callPuter(env, model, messages, undefined, opts.maxTokens);
-      const text = cleanText(msg.content);
-      if (text) return { text, model };
-    } catch (err) {
-      console.error("complete: Puter gagal → Workers AI", err);
-      await logActivity(env, opts.actor, "step", err instanceof QuotaError ? "Jatah Puter habis, pakai otak cadangan" : "Puter tidak merespons, pakai otak cadangan");
-    }
+  try {
+    const msg = await callHermes(env, messages, undefined, opts.maxTokens);
+    const text = cleanText(msg.content);
+    if (text) return { text, model: "hermes-smartcombo" };
+  } catch (err) {
+    console.error("complete: Hermes gagal → Workers AI", err);
+    await logActivity(env, opts.actor, "step", "Hermes lokal tidak merespons, pakai otak cadangan");
   }
   const msg = await callWorkersAI(env, messages, undefined, { maxTokens: opts.maxTokens, noThinking: opts.noThinking });
   return { text: cleanText(msg.content) || "(tidak ada hasil)", model: env.FALLBACK_MODEL };
@@ -618,16 +603,13 @@ export async function runAgent(
     if (context) userContent.push({ type: "text", text: context });
   }
   let tier: "fast" | "smart" = opts.tier === "smart" || wantsSmart(parts) ? "smart" : "fast";
-  let usePuter = !!env.PUTER_AUTH_TOKEN;
-
-  // Siapa yang sedang "bekerja" di Kantor 3D.
-  let actor: AgentId = usePuter ? (tier === "smart" ? "opus" : "haiku") : "gemma";
+  let actor: AgentId = tier === "smart" ? "opus" : "haiku";
   const firstText = parts.find((p) => p.type === "text");
   const snippet = opts.source === "briefing" || !firstText || firstText.type !== "text" ? "" : `: "${clip(firstText.text, 70)}"`;
   await logActivity(env, actor, "start", (SOURCE_ACTIVITY[opts.source] ?? "Memproses permintaan") + snippet);
 
   const messages: ChatMessage[] = [
-    { role: "system", content: basePrompt + (tier === "fast" && usePuter ? FAST_PROMPT : "") },
+    { role: "system", content: basePrompt + (tier === "fast" ? FAST_PROMPT : "") },
     ...normalizeHistory(opts.history),
     { role: "user", content: userContent },
   ];
@@ -635,7 +617,7 @@ export async function runAgent(
     ? [...TOOLS, MARKETING_TOOL, ...MEMORY_TOOLS, ...(googleOn ? GOOGLE_TOOLS : []), ...(interviewing ? [SAVE_PROFILE_TOOL] : [])]
     : undefined;
   // Model cepat boleh escalate (juga saat briefing tanpa tool, supaya tidak perlu).
-  const toolsFor = () => (baseTools && tier === "fast" && usePuter ? [...baseTools, ESCALATE_TOOL] : baseTools);
+  const toolsFor = () => (baseTools && tier === "fast" ? [...baseTools, ESCALATE_TOOL] : baseTools);
 
   let modelUsed = "";
   // Tool yang benar-benar menulis data; dipakai untuk menangkap klaim palsu "sudah disimpan".
@@ -660,29 +642,15 @@ export async function runAgent(
   try {
     for (let i = 0; i < 8; i++) {
       let msg: ModelMessage;
-      const model = tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST;
-      if (usePuter) {
-        try {
-          msg = await callPuter(env, model, messages, toolsFor()).catch(async (err) => {
-            // Gangguan sementara: coba sekali lagi sebelum pindah ke cadangan.
-            if (err instanceof QuotaError) throw err;
-            console.error("Puter gagal, coba ulang sekali", err);
-            await new Promise((r) => setTimeout(r, 1500));
-            return callPuter(env, model, messages, toolsFor());
-          });
-          modelUsed = model;
-        } catch (err) {
-          // Sekali gagal, sisa giliran ini pakai cadangan supaya bot tetap jalan.
-          console.error(err instanceof QuotaError ? "Jatah Puter habis" : "Puter gagal", "→ Workers AI", err);
-          usePuter = false;
-          messages[0] = { role: "system", content: basePrompt };
-          await logActivity(env, actor, "error", err instanceof QuotaError ? "Jatah Puter habis" : "Puter tidak merespons");
-          actor = "gemma";
-          await logActivity(env, actor, "start", "Menggantikan sementara (otak cadangan)");
-          msg = await callWorkersAI(env, messages, toolsFor());
-          modelUsed = env.FALLBACK_MODEL;
-        }
-      } else {
+      try {
+        msg = await callHermes(env, messages, toolsFor());
+        modelUsed = "hermes-smartcombo";
+      } catch (err) {
+        // Fallback ke Workers AI
+        console.error("Hermes gagal", err);
+        await logActivity(env, actor, "error", "Hermes tidak merespons");
+        actor = "gemma";
+        await logActivity(env, actor, "start", "Menggantikan sementara (otak cadangan)");
         msg = await callWorkersAI(env, messages, toolsFor());
         modelUsed = env.FALLBACK_MODEL;
       }
