@@ -1,1 +1,65 @@
-{\n  \"$schema\": \"node_modules/wrangler/config-schema.json\",\n  \"name\": \"asisten-ai\",\n  \"main\": \"src/index.ts\",\n  \"compatibility_date\": \"2026-09-01\",\n  \"compatibility_flags\": [\"nodejs_compat\", \"global_fetch_strictly_public\"],\n  \"observability\": { \"enabled\": true },\n\n  // Website admin (React, hasil build di web/dist). Path di bawah ditangani Worker dulu.\n  \"assets\": {\n    \"directory\": \"./web/dist\",\n    \"not_found_handling\": \"single-page-application\",\n    \"run_worker_first\": [\"/api/*\", \"/telegram\", \"/setup\", \"/status\", \"/mcp\", \"/authorize\", \"/oauth/*\", \"/.well-known/*\"]\n  },\n\n  \"d1_databases\": [\n    {\n      \"binding\": \"DB\",\n      \"database_name\": \"asisten-ai-db\",\n      \"database_id\": \"cc9859c0-2e7d-4b27-b2ad-2b6eb4e828cb\",\n      \"migrations_dir\": \"migrations\"\n    }\n  ],\n\n  // Token & grant OAuth untuk konektor MCP (Claude).\n  \"kv_namespaces\": [\n    // Gambar & video iklan kompetitor (link Facebook kedaluwarsa, jadi disalin ke sini).\n    { \"binding\": \"MEDIA\", \"id\": \"74a435ed36a647c38656f38e1de07345\" },\n    { \"binding\": \"OAUTH_KV\", \"id\": \"e782c652cc4b4ec2928513dba219a827\" }\n  ],\n\n  // Update Telegram diantrekan dulu supaya webhook langsung balas 200,\n  // lalu diproses di consumer (boleh jalan sampai 15 menit).\n  \"queues\": {\n    \"producers\": [{ \"binding\": \"JOBS\", \"queue\": \"asisten-ai-jobs\" }],\n    \"consumers\": [{ \"queue\": \"asisten-ai-jobs\", \"max_batch_size\": 1, \"max_retries\": 0 }]\n  },\n\n  // Workers AI: transkrip voice note (Whisper).\n  \"ai\": { \"binding\": \"AI\" },\n  // Indeks vektor untuk memori & catatan (bge-m3, 1024 dimensi, cosine). `remote` → wrangler dev\n  // juga memakai indeks asli (Vectorize belum bisa disimulasikan lokal).\n  \"vectorize\": [{ \"binding\": \"VECTORIZE\", \"index_name\": \"asisten-ai-memory\", \"remote\": true }],\n\n  \"triggers\": {\n    \"crons\": [\n      \"*/5 * * * *\", // cek pengingat tiap 5 menit\n      \"0 0 * * *\",   // 07:00 WIB — briefing pagi\n      \"0 14 * * *\",  // 21:00 WIB — rekap malam\n      \"0 13 * * SUN\" // Minggu 20:00 WIB — review mingguan CEO\n    ]\n  },\n\n  \"vars\": {\n    \"FALLBACK_MODEL\": \"@cf/google/gemma-4-26b-a4b-it\", // cadangan gratis (Workers AI, paket Free)\n    \"TIMEZONE_OFFSET\": \"+07:00\",\n    \"PUBLIC_URL\": \"https://asisten-ai.willywijaya46.workers.dev\",\n    \"OWNER_NAME\": \"Willy\",\n    \"OWNER_CHAT_ID\": \"1001715052\",\n    \"HERMES_API_ENDPOINT\": \"https://hermes-tunnel.example.com/api/agent\"  // Ganti dengan URL tunnel Hermes lokal\n  }\n  // Secrets (pakai `npx wrangler secret put <NAMA>`):\n  //   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET\n  //\n  // HERMES_API_ENDPOINT bisa juga di-set sebagai secret kalau sensitif.\n}\n
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "asisten-ai",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "observability": { "enabled": true },
+
+  // Website admin (React, hasil build di web/dist). Path di bawah ditangani Worker dulu.
+  "assets": {
+    "directory": "./web/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/telegram", "/setup", "/status", "/mcp", "/authorize", "/oauth/*", "/.well-known/*"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "asisten-ai-db",
+      "database_id": "cc9859c0-2e7d-4b27-b2ad-2b6eb4e828cb",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Token & grant OAuth untuk konektor MCP (Claude).
+  "kv_namespaces": [
+    // Gambar & video iklan kompetitor (link Facebook kedaluwarsa, jadi disalin ke sini).
+    { "binding": "MEDIA", "id": "74a435ed36a647c38656f38e1de07345" },
+    { "binding": "OAUTH_KV", "id": "e782c652cc4b4ec2928513dba219a827" }
+  ],
+
+  // Update Telegram diantrekan dulu supaya webhook langsung balas 200,
+  // lalu diproses di consumer (boleh jalan sampai 15 menit).
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "asisten-ai-jobs" }],
+    "consumers": [{ "queue": "asisten-ai-jobs", "max_batch_size": 1, "max_retries": 0 }]
+  },
+
+  // Workers AI: transkrip voice note (Whisper).
+  "ai": { "binding": "AI" },
+  // Indeks vektor untuk memori & catatan (bge-m3, 1024 dimensi, cosine). `remote` → wrangler dev
+  // juga memakai indeks asli (Vectorize belum bisa disimulasikan lokal).
+  "vectorize": [{ "binding": "VECTORIZE", "index_name": "asisten-ai-memory", "remote": true }],
+
+  "triggers": {
+    "crons": [
+      "*/5 * * * *", // cek pengingat tiap 5 menit
+      "0 0 * * *",   // 07:00 WIB — briefing pagi
+      "0 14 * * *",  // 21:00 WIB — rekap malam
+      "0 13 * * SUN" // Minggu 20:00 WIB — review mingguan CEO
+    ]
+  },
+
+  "vars": {
+    "MODEL_FAST": "smart-easy-claude",   // router lokal Hermes: tugas rutin
+    "MODEL_SMART": "smart-hard-claude",  // router lokal Hermes: permintaan rumit
+    "FALLBACK_MODEL": "@cf/google/gemma-4-26b-a4b-it", // cadangan gratis (Workers AI, paket Free)
+    "TIMEZONE_OFFSET": "+07:00",
+    "PUBLIC_URL": "https://asisten-ai.willywijaya46.workers.dev",
+    "OWNER_NAME": "Willy",
+    "OWNER_CHAT_ID": "1001715052"
+  }
+  // Secrets (pakai `npx wrangler secret put <NAMA>`):
+  //   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, HERMES_API_ENDPOINT, HERMES_API_KEY
+}

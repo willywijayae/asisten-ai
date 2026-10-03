@@ -447,30 +447,25 @@ type ModelMessage = { content?: string | null; tool_calls?: ToolCall[] };
 
 class QuotaError extends Error {}
 
-/** Claude via Hermes lokal (smartcombo router). */
-async function callHermes(env: Env, messages: ChatMessage[], tools?: Tool[], maxTokens = 4096): Promise<ModelMessage> {
-  // Map tier ke model names (coach Hermes tentang apa yg diminta)
-  const systemMsg = messages.find(m => m.role === "system")?.content || "";
-  const isSmart = systemMsg.includes("MODEL AHLI") || systemMsg.includes("SMART");
-  
+/** Claude via Hermes lokal (router 9router). Autentikasi Bearer. */
+async function callHermes(
+  env: Env,
+  messages: ChatMessage[],
+  tools: Tool[] | undefined,
+  maxTokens: number | undefined,
+  tier: "fast" | "smart",
+): Promise<ModelMessage> {
+  if (!env.HERMES_API_ENDPOINT) throw new Error("HERMES_API_ENDPOINT belum di-set");
   const res = await fetch(env.HERMES_API_ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages,
-      ...(tools ? { tools } : {}),
-      max_tokens: maxTokens,
-      tier: isSmart ? "smart" : "fast",
-    }),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.HERMES_API_KEY ?? ""}` },
+    body: JSON.stringify({ messages, ...(tools ? { tools } : {}), max_tokens: maxTokens ?? 4096, tier }),
+    signal: AbortSignal.timeout(120_000),
   });
-  
   const json = (await res.json().catch(() => null)) as any;
-  if (!res.ok || !json) {
-    throw new Error(`Hermes ${res.status}: ${JSON.stringify(json?.error ?? json).slice(0, 300)}`);
-  }
-  
+  if (!res.ok || !json) throw new Error(`Hermes ${res.status}: ${JSON.stringify(json?.error ?? json).slice(0, 300)}`);
   const result = json.message ?? json;
-  if (!result.content && !result.tool_calls) {
+  if (!result.content && !result.tool_calls?.length) {
     throw new Error(`Respons Hermes tidak terduga: ${JSON.stringify(result).slice(0, 300)}`);
   }
   return result;
@@ -515,9 +510,9 @@ export async function complete(
     { role: "user", content: opts.user },
   ];
   try {
-    const msg = await callHermes(env, messages, undefined, opts.maxTokens);
+    const msg = await callHermes(env, messages, undefined, opts.maxTokens, opts.tier);
     const text = cleanText(msg.content);
-    if (text) return { text, model: "hermes-smartcombo" };
+    if (text) return { text, model: opts.tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST };
   } catch (err) {
     console.error("complete: Hermes gagal → Workers AI", err);
     await logActivity(env, opts.actor, "step", "Hermes lokal tidak merespons, pakai otak cadangan");
@@ -643,8 +638,8 @@ export async function runAgent(
     for (let i = 0; i < 8; i++) {
       let msg: ModelMessage;
       try {
-        msg = await callHermes(env, messages, toolsFor());
-        modelUsed = "hermes-smartcombo";
+        msg = await callHermes(env, messages, toolsFor(), undefined, tier);
+        modelUsed = tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST;
       } catch (err) {
         // Fallback ke Workers AI
         console.error("Hermes gagal", err);

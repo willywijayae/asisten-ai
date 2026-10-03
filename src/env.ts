@@ -16,6 +16,11 @@ export interface Env {
   VECTORIZE: Vectorize;
   /** Endpoint Hermes lokal (otak utama via smartcombo router). */
   HERMES_API_ENDPOINT: string;
+  /** Token rahasia untuk memanggil Hermes (secret). */
+  HERMES_API_KEY: string;
+  /** Nama model di router lokal: tingkat cepat & ahli (juga label di dashboard). */
+  MODEL_FAST: string;
+  MODEL_SMART: string;
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
   OWNER_CHAT_ID: string;

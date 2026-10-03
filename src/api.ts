@@ -257,7 +257,7 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
       },
       focus: await profile.getFocus(env),
       models: { haiku: env.MODEL_FAST, opus: env.MODEL_SMART, gemma: env.FALLBACK_MODEL },
-      puterConnected: !!env.PUTER_AUTH_TOKEN,
+      puterConnected: !!env.HERMES_API_ENDPOINT,
       timezone: env.TIMEZONE_OFFSET,
     });
   }
@@ -488,7 +488,7 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
       modelFast: env.MODEL_FAST,
       modelSmart: env.MODEL_SMART,
       fallbackModel: env.FALLBACK_MODEL,
-      puterConnected: !!env.PUTER_AUTH_TOKEN,
+      puterConnected: !!env.HERMES_API_ENDPOINT,
       timezone: env.TIMEZONE_OFFSET,
     });
   }

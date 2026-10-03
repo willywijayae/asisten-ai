@@ -127,7 +127,7 @@ cat > ecosystem.config.js <<'EOF'
 module.exports = {
   apps: [{
     name: "hermes-api",
-    script: "dist/src/hermes-api-server.js",
+    script: "scripts/hermes-api-server.mjs",
     watch: false,
     env: {
       HERMES_API_PORT: 3000
@@ -152,7 +152,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 EXPOSE 3000
-CMD ["node", "dist/src/hermes-api-server.js"]
+CMD ["node", "scripts/hermes-api-server.mjs"]
 ```
 
 ```bash

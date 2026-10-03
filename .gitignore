@@ -10,3 +10,4 @@ web/dist/
 .setup-output.txt
 .setup-secrets.tmp.json
 wrangler.jsonc.bak
+.env*
