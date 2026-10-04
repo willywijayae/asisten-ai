@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS intel_products (
   keywords TEXT NOT NULL,             -- dipisah koma, huruf kecil
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
-INSERT INTO intel_products (name, keywords) VALUES ('Erojan', 'erojan'), ('Coffiy', 'coffiy'), ('DVN', 'dvn');
+INSERT INTO intel_products (name, keywords) VALUES ('Erojan', 'erojan'), ('Coffiy', 'coffiy'), ('DVN', 'dvn'), ('Novia', 'novia');
 
 -- Tag AI per iklan kompetitor (di-cache per ad_id; iklan dengan copy identik memakai ulang tag via content_hash).
 CREATE TABLE IF NOT EXISTS ad_tags (
