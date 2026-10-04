@@ -66,7 +66,7 @@ export function mapAd(ad: any): Record<string, unknown> {
 
 export async function syncMetaAds(env: Env): Promise<{ fetched: number; added: number; updated: number; skipped: number }> {
   if (!metaConfigured(env)) throw new Error("Meta belum dikonfigurasi (Pengaturan → Meta Ads).");
-  const fields = "id,name,effective_status,campaign{name},insights.date_preset(last_7d){spend,impressions,ctr,frequency,cost_per_action_type,purchase_roas}";
+  const fields = "id,name,effective_status,campaign{name},insights.date_preset(this_month){spend,impressions,ctr,frequency,cost_per_action_type,purchase_roas}";
   let url: string | null = `${GRAPH}/${account(env)}/ads?fields=${encodeURIComponent(fields)}&limit=100`;
   const ads: any[] = [];
   for (let page = 0; url && page < 5 && ads.length < 500; page++) {
