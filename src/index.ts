@@ -11,6 +11,8 @@ import { weeklyReview } from "./ceo";
 import { runRemix, saveMedia, scorePending } from "./competitors";
 import { runStage, runVideo } from "./studio";
 import * as intel from "./intel";
+import * as secrets from "./secrets";
+import * as meta from "./meta";
 import { handleApi } from "./api";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp";
@@ -105,6 +107,7 @@ const app = {
   },
 
   async queue(batch: MessageBatch<JobMessage>, env: Env): Promise<void> {
+    await secrets.applyStoredConfig(env);
     for (const raw of batch.messages) {
       if ("type" in raw.body) {
         const job = raw.body;
@@ -139,6 +142,7 @@ const app = {
 
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
     if (!env.OWNER_CHAT_ID) return;
+    await secrets.applyStoredConfig(env);
     if (event.cron === "*/5 * * * *") {
       await sendReminders(env);
       // Sisa pekerjaan riset kompetitor dicicil kecil-kecil (batas 50 subrequest per pemanggilan).
@@ -148,6 +152,7 @@ const app = {
     else if (event.cron === "0 0 * * *") {
       await pruneActivity(env).catch((err) => console.error("Gagal membersihkan aktivitas", err));
       await sendBriefing(env, "morning");
+      if (meta.metaConfigured(env)) await meta.syncMetaAds(env).catch((err) => meta.recordFailure(env, String(err instanceof Error ? err.message : err)));
       // Intelijen Kreatif: siklus harian (tag, sinyal pemenang, VOC, feedback loop); Senin pagi + brief mingguan.
       await intel.runDaily(env).catch((err) => console.error("Intel harian gagal", err));
       if (intel.isMondayLocal(env)) await intel.weeklyBriefs(env).catch((err) => console.error("Brief mingguan gagal", err));

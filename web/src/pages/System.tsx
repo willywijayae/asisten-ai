@@ -5,6 +5,7 @@ import { useLoad } from "../lib/useLoad";
 import { fmtWhen } from "../lib/time";
 import { Badge, Button, Card, Empty, PageHeader, SectionTitle, Spinner } from "../components/ui";
 import { useToast } from "../components/app-context";
+import { ConfigPanel } from "../components/ConfigPanel";
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -118,6 +119,8 @@ export function System({ onLogout }: { onLogout: () => void }) {
               </div>
             </Card>
           </section>
+
+          <ConfigPanel />
 
           <section className="lg:col-span-2">
             <SectionTitle>Google (Gmail & Drive)</SectionTitle>

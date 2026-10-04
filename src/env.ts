@@ -52,4 +52,7 @@ export interface Env {
   SORA_MODEL?: string;
   SORA_SIZE?: string;
   GROK_VIDEO_MODEL?: string;
+  /** Meta Marketing API (opsional, bisa diisi dari Pengaturan): sinkronisasi iklan sendiri. */
+  META_ACCESS_TOKEN?: string;
+  META_AD_ACCOUNT_ID?: string;
 }

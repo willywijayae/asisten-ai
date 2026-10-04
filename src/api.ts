@@ -13,6 +13,8 @@ import { weeklyReview } from "./ceo";
 import * as competitors from "./competitors";
 import * as studio from "./studio";
 import * as intel from "./intel";
+import * as secrets from "./secrets";
+import * as meta from "./meta";
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(data, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -79,6 +81,7 @@ async function readJson(req: Request): Promise<any> {
 
 export async function handleApi(req: Request, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
   try {
+    await secrets.applyStoredConfig(env);
     return await route(req, env, url, ctx);
   } catch (err) {
     if (err instanceof HttpError) return json({ error: err.message }, err.status);
@@ -211,6 +214,55 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
   }
 
   if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
+
+  // --- Pengaturan: kunci/token & konektor MCP (nilai tidak pernah dikirim balik, hanya status) ---
+  if (path === "/settings/config" && method === "GET") {
+    return json({ ...(await secrets.status(env)), meta: { configured: meta.metaConfigured(env), last_sync: await meta.lastSync(env) }, mcp: await secrets.listMcp(env) });
+  }
+  if (path === "/settings/config" && method === "POST") {
+    const b = await readJson(req);
+    try {
+      const r = await secrets.save(env, b?.values && typeof b.values === "object" ? b.values : {});
+      await secrets.applyStoredConfig(env);
+      return json(r);
+    } catch (e) {
+      throw new HttpError(400, e instanceof Error ? e.message : String(e));
+    }
+  }
+  if (path === "/settings/generate-ingest-key" && method === "POST") {
+    if (!secrets.canStore(env)) throw new HttpError(400, "Set dulu ENCRYPTION_KEY (secret Worker).");
+    const k = secrets.generateKey();
+    await secrets.save(env, { INGEST_KEY: k });
+    return json({ key: k }); // satu-satunya saat nilai ditampilkan; setelah ini hanya 4 karakter terakhir
+  }
+  if (path === "/settings/meta/test" && method === "POST") return json(await meta.testMeta(env));
+  if (path === "/settings/meta/sync" && method === "POST") {
+    try {
+      const r = await meta.syncMetaAds(env);
+      ctx.waitUntil(intel.detectSignals(env).then(() => intel.feedbackLoop(env)).catch((e) => console.error("Pasca-sync gagal", e)));
+      return json(r);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await meta.recordFailure(env, msg);
+      throw new HttpError(400, msg);
+    }
+  }
+  if (path === "/settings/mcp" && method === "POST") {
+    const b = await readJson(req);
+    try {
+      return json({ mcp: await secrets.addMcp(env, String(b?.name ?? ""), String(b?.url ?? ""), String(b?.token ?? "")) });
+    } catch (e) {
+      throw new HttpError(400, e instanceof Error ? e.message : String(e));
+    }
+  }
+  const mcpId = path.match(/^\/settings\/mcp\/([\w-]+)(\/test)?$/);
+  if (mcpId && mcpId[2] && method === "POST") {
+    try { return json(await secrets.testMcp(env, mcpId[1])); } catch (e) { throw new HttpError(404, e instanceof Error ? e.message : String(e)); }
+  }
+  if (mcpId && !mcpId[2] && method === "DELETE") {
+    if (!(await secrets.removeMcp(env, mcpId[1]))) throw new HttpError(404, "Konektor tidak ditemukan");
+    return json({ ok: true });
+  }
 
   if (path === "/me") return json({ ok: true, name: env.OWNER_NAME || null });
 
