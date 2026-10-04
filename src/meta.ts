@@ -91,14 +91,39 @@ export async function lastSync(env: Env): Promise<Record<string, unknown> | null
 
 import { complete } from "./agent";
 
-const SYS = "Kamu Analis Iklan senior (Performance Marketing). Jawab dalam Bahasa Indonesia, lugas, pakai angka aktual dari data, jangan mengarang metrik. Format markdown ringkas.";
+const SYS = "Kamu Analis Iklan senior (Performance Marketing) untuk e-commerce Indonesia. Jawab dalam Bahasa Indonesia, lugas, pakai angka aktual dari data, jangan mengarang metrik. Format markdown ringkas dan action-oriented.";
 
-/** mode "all": analisa seluruh tabel. mode "row": breakdown satu baris (iklan/kampanye) dibanding rata-rata tabel. */
+function adCsvSummary(data: any[]): string {
+  const rows = data.map((r) => ({
+    ad: r["Ad name"],
+    delivery: r["Ad delivery"],
+    ad_set: r["Ad set name"],
+    spend_idr: r["Amount spent (IDR)"],
+    impressions: r["Impressions"],
+    reach: r["Reach"],
+    landing_page_views: r["Landing page views"],
+    adds_to_cart: r["Adds to cart"],
+    contacts: r["Contacts"],
+    cost_per_contact_idr: r["Cost per contact (IDR)"],
+    purchases: r["Purchases"],
+    cost_per_purchase_idr: r["Cost per purchase (IDR)"],
+    purchase_roas: r["Purchase ROAS (return on ad spend)"],
+    quality: r["Quality ranking"],
+    engagement: r["Engagement rate ranking"],
+    conversion: r["Conversion rate ranking"],
+    lp_view_rate: r["Landing page views rate per link clicks"],
+    result_indicator: r["Result indicator"],
+  }));
+  return JSON.stringify(rows.slice(0, 120), null, 2);
+}
+
+/** mode "all": analisa seluruh tabel. mode "row": breakdown satu baris iklan dibanding rata-rata tabel. */
 export async function analyzeMetaAds(env: Env, data: any[], row?: any): Promise<string> {
-  const table = JSON.stringify(data.slice(0, 120));
+  const table = adCsvSummary(data);
+  const rowSummary = row ? adCsvSummary([row]) : "";
   const user = row
-    ? `Data seluruh iklan (konteks pembanding):\n${table}\n\nBreakdown mendalam untuk baris ini:\n${JSON.stringify(row)}\n\nJelaskan: 1) performa vs rata-rata tabel, 2) masalah/peluang (CTR, CPM, CPC, frekuensi, CPA/ROAS jika ada), 3) keputusan: matikan / pertahankan / scale / tes kreatif baru, beserta angka budget atau langkah konkret.`
-    : `Data ekspor Meta Ads:\n${table}\n\nBuat analisa lengkap: 1) Ringkasan (total spend, hasil, CPA/ROAS), 2) Top performer & yang boncos, 3) Diagnosa (kreatif, audiens, frekuensi, biaya), 4) Action plan prioritas (matikan, scale, tes berikutnya) dengan angka konkret.`;
-  const res = await complete(env, { system: SYS, user, tier: "smart", actor: "opus", maxTokens: 3000 });
+    ? `Konteks seluruh tabel Meta Ads:\n${table}\n\nIklan yang dibreakdown:\n${rowSummary}\n\nAnalisa 1 iklan ini. Bandingkan dengan iklan lain di tabel. Wajib bahas: spend, purchase, CPA, ROAS, LPV, add to cart, contact, ranking quality/engagement/conversion. Akhiri dengan keputusan jelas: SCALE / MATIKAN / PERBAIKI / PANTAU, plus langkah konkret kreatif, funnel, dan budget.`
+    : `Data CSV Meta Ads 1-4 Oct 2026:\n${table}\n\nBuat analisa lengkap untuk dashboard: 1) Ringkasan total spend, purchase, CPA, ROAS dan funnel LPV→ATC→Contact→Purchase, 2) Ranking iklan terbaik sampai terburuk, 3) Diagnosa masalah utama (kreatif, landing page, offer, conversion rate), 4) Action plan besok pagi: iklan mana scale/matikan/perbaiki, budget rekomendasi, dan 3 ide testing berikutnya. Jangan mengarang data di luar tabel.`;
+  const res = await complete(env, { system: SYS, user, tier: "smart", actor: "opus", maxTokens: 3500 });
   return res.text;
 }
