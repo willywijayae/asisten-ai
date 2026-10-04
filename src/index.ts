@@ -10,6 +10,7 @@ import { extractMemories, reindexAll } from "./memory";
 import { weeklyReview } from "./ceo";
 import { runRemix, saveMedia, scorePending } from "./competitors";
 import { runStage, runVideo } from "./studio";
+import * as intel from "./intel";
 import { handleApi } from "./api";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp";
@@ -147,6 +148,9 @@ const app = {
     else if (event.cron === "0 0 * * *") {
       await pruneActivity(env).catch((err) => console.error("Gagal membersihkan aktivitas", err));
       await sendBriefing(env, "morning");
+      // Intelijen Kreatif: siklus harian (tag, sinyal pemenang, VOC, feedback loop); Senin pagi + brief mingguan.
+      await intel.runDaily(env).catch((err) => console.error("Intel harian gagal", err));
+      if (intel.isMondayLocal(env)) await intel.weeklyBriefs(env).catch((err) => console.error("Brief mingguan gagal", err));
     }
     else if (event.cron === "0 14 * * *") await sendBriefing(env, "evening");
     else if (event.cron === "0 13 * * SUN") await weeklyReview(env);

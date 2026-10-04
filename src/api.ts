@@ -12,6 +12,7 @@ import * as memory from "./memory";
 import { weeklyReview } from "./ceo";
 import * as competitors from "./competitors";
 import * as studio from "./studio";
+import * as intel from "./intel";
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(data, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -186,6 +187,27 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
       crypto.subtle.timingSafeEqual(enc.encode(key), enc.encode(env.INGEST_KEY));
     if (!ok) throw new HttpError(403, "Kunci salah");
     return json(await ingestScans(env, ctx, await readJson(req), "jadwal"));
+  }
+
+  // Sinkronisasi iklan sendiri (Meta Ads API/Motion) dan VOC (chat/CRM) dari skrip luar, pakai kunci yang sama.
+  if ((path === "/intel/ingest/own-ads" || path === "/intel/ingest/voc") && method === "POST") {
+    const key = req.headers.get("x-ingest-key") ?? "";
+    const enc = new TextEncoder();
+    const ok = !!env.INGEST_KEY && key.length === env.INGEST_KEY.length && crypto.subtle.timingSafeEqual(enc.encode(key), enc.encode(env.INGEST_KEY));
+    if (!ok) throw new HttpError(403, "Kunci salah");
+    const b = await readJson(req);
+    try {
+      if (path.endsWith("/own-ads")) {
+        const r = await intel.ingestOwnAds(env, Array.isArray(b?.ads) ? b.ads : []);
+        ctx.waitUntil(intel.detectSignals(env).then(() => intel.feedbackLoop(env)).catch((e) => console.error("Pasca-sync gagal", e)));
+        return json(r);
+      }
+      const r = await intel.ingestVoc(env, Array.isArray(b?.items) ? b.items : []);
+      ctx.waitUntil(intel.classifyVoc(env, 40).catch((e) => console.error("Klasifikasi VOC gagal", e)));
+      return json(r);
+    } catch (e) {
+      throw new HttpError(400, e instanceof Error ? e.message : String(e));
+    }
   }
 
   if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
@@ -543,6 +565,7 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
     return json({ ok: true });
   }
 
+  if (path.startsWith("/intel")) return intelRoute(req, env, url, path, method, ctx);
   throw new HttpError(404, "Endpoint tidak ditemukan");
 }
 
@@ -569,9 +592,123 @@ async function ingestScans(env: Env, ctx: ExecutionContext, b: any, defaultSourc
       .notifyScan(env, totals)
       .then(() => competitors.saveMedia(env))
       .then(() => competitors.scorePending(env, 15))
+      .then(() => intel.tagPending(env, 30))
+      .then(() => intel.detectSignals(env))
       .catch((err) => console.error("Pasca-ingest gagal", err)),
   );
   return { ...totals, reportId };
+}
+
+async function intelRoute(req: Request, env: Env, url: URL, path: string, method: string, ctx: ExecutionContext): Promise<Response> {
+  const guard = async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof HttpError) throw e;
+      throw new HttpError(400, e instanceof Error ? e.message : String(e));
+    }
+  };
+  const q = (k: string) => url.searchParams.get(k) || undefined;
+  const id = (re: RegExp) => {
+    const m = re.exec(path);
+    return m ? Number(m[1]) : null;
+  };
+
+  if (path === "/intel/taxonomy") return json({ taxonomy: intel.TAXONOMY, rules: intel.RULES });
+  if (path === "/intel/overview") return json({ overview: await intel.overview(env), products: await intel.listProducts(env), kpi: await intel.kpi(env, q("product")) });
+  if (path === "/intel/products" && method === "POST") {
+    const b = await readJson(req);
+    await guard(() => intel.saveProduct(env, String(b.name ?? ""), String(b.keywords ?? "")));
+    return json({ products: await intel.listProducts(env) });
+  }
+  let n = id(/^\/intel\/products\/(\d+)$/);
+  if (n && method === "DELETE") {
+    if (!(await intel.deleteProduct(env, n))) throw new HttpError(404, "Produk tidak ditemukan");
+    return json({ ok: true });
+  }
+
+  if (path === "/intel/map") return json(await intel.angleMap(env, q("product")));
+  if (path === "/intel/winners") return json({ ads: await intel.winnerBoard(env, { product: q("product"), format: q("format") }) });
+  if (path === "/intel/timeline") return json(await intel.timeline(env, q("product")));
+  if (path === "/intel/perf") return json({ angles: await intel.ownPerfByAngle(env, q("product")), status: await intel.listAngles(env, q("product")) });
+  if (path === "/intel/costs") return json({ costs: await intel.costs(env) });
+  if (path === "/intel/tag" && method === "POST") return json(await guard(() => intel.tagPending(env, 40)));
+  if (path === "/intel/run-daily" && method === "POST") return json(await guard(() => intel.runDaily(env)));
+  if (path === "/intel/signals" && method === "POST") return json(await guard(() => intel.detectSignals(env)));
+
+  if (path === "/intel/own-ads" && method === "GET") return json({ ads: await intel.listOwnAds(env, q("product")) });
+  if (path === "/intel/own-ads" && method === "POST") {
+    const b = await readJson(req);
+    const ads = Array.isArray(b?.ads) ? b.ads : [];
+    if (!ads.length) throw new HttpError(400, "Kirim {\"ads\":[…]}");
+    const r = await guard(() => intel.ingestOwnAds(env, ads));
+    ctx.waitUntil(intel.detectSignals(env).then(() => intel.feedbackLoop(env)).catch((e) => console.error("Pasca-sync gagal", e)));
+    return json(r);
+  }
+
+  if (path === "/intel/voc" && method === "GET") return json({ items: await intel.listVoc(env, { product: q("product"), category: q("category"), angle: q("angle") }) });
+  if (path === "/intel/voc" && method === "POST") {
+    const b = await readJson(req);
+    const items = Array.isArray(b?.items) ? b.items : [];
+    if (!items.length) throw new HttpError(400, "Kirim {\"items\":[{source,product,quote}]}");
+    const r = await guard(() => intel.ingestVoc(env, items));
+    ctx.waitUntil(intel.classifyVoc(env, 40).catch((e) => console.error("Klasifikasi VOC gagal", e)));
+    return json(r);
+  }
+  if (path === "/intel/voc/classify" && method === "POST") return json(await guard(() => intel.classifyVoc(env, 40)));
+
+  if (path === "/intel/briefs" && method === "GET") return json({ briefs: await intel.listBriefs(env, q("product")) });
+  if (path === "/intel/briefs" && method === "POST") {
+    const b = await readJson(req);
+    const product = String(b.product ?? "");
+    if (!(await intel.listProducts(env)).some((p) => p.name === product)) throw new HttpError(400, "Produk tidak dikenal");
+    return json(await guard(() => intel.generateBrief(env, product)));
+  }
+  n = id(/^\/intel\/briefs\/(\d+)\/send$/);
+  if (n && method === "POST") {
+    if (!env.OWNER_CHAT_ID) throw new HttpError(400, "OWNER_CHAT_ID belum diatur");
+    if (!(await guard(() => intel.sendBrief(env, n!)))) throw new HttpError(404, "Brief tidak ditemukan");
+    return json({ ok: true });
+  }
+  n = id(/^\/intel\/briefs\/(\d+)\/item$/);
+  if (n && method === "POST") {
+    const b = await readJson(req);
+    return json({ done: await guard(() => intel.setBriefItem(env, n!, String(b.key ?? ""), !!b.done)) });
+  }
+
+  if (path === "/intel/hooks" && method === "GET") return json({ hooks: await intel.listHooks(env, { product: q("product"), angle: q("angle"), source: q("source"), status: q("status") }) });
+  if (path === "/intel/hooks" && method === "POST") {
+    const b = await readJson(req);
+    const hid = await intel.addHook(env, { text: String(b.text ?? ""), angle: b.angle ?? null, product: b.product ?? null, source: "manual" });
+    if (!hid) throw new HttpError(400, "Hook terlalu pendek atau sudah ada");
+    return json({ id: hid });
+  }
+  if (path === "/intel/hooks/generate" && method === "POST") {
+    const b = await readJson(req);
+    return json(await guard(() => intel.generateHooks(env, String(b.product ?? ""), String(b.angle ?? ""), Number(b.n) || 20)));
+  }
+  n = id(/^\/intel\/hooks\/(\d+)$/);
+  if (n && method === "PATCH") {
+    await guard(async () => intel.updateHook(env, n!, await readJson(req)));
+    return json({ ok: true });
+  }
+  if (n && method === "DELETE") {
+    if (!(await intel.deleteHook(env, n))) throw new HttpError(404, "Hook tidak ditemukan");
+    return json({ ok: true });
+  }
+
+  if (path === "/intel/policy" && method === "GET") return json({ checks: await intel.listPolicy(env) });
+  if (path === "/intel/policy" && method === "POST") {
+    const b = await readJson(req);
+    return json(await guard(() => intel.policyCheck(env, b.product ? String(b.product) : null, String(b.creative ?? ""))));
+  }
+
+  if (path === "/intel/alerts" && method === "GET") return json({ alerts: await intel.listAlerts(env) });
+  if (path === "/intel/alerts/seen" && method === "POST") {
+    await intel.markAlertsSeen(env);
+    return json({ ok: true });
+  }
+  throw new HttpError(404, "Endpoint tidak ditemukan");
 }
 
 async function studioRoute(req: Request, env: Env, path: string, method: string): Promise<Response> {
