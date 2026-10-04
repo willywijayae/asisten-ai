@@ -454,7 +454,7 @@ export async function scorePending(env: Env, limit = 40): Promise<{ scored: numb
   }
   if (stmts.length) await env.DB.batch(stmts);
   await logActivity(env, "analis", "done", `Selesai menilai ${jev + ai} iklan kompetitor (Jev ${jev}, tim AI ${ai})`);
-  const left = await env.DB.prepare("SELECT count(*) AS n FROM competitor_ads WHERE scored_at IS NULL").first<{ n: number }>();
+  const left = ads.length < limit ? { n: 0 } : await env.DB.prepare("SELECT count(*) AS n FROM competitor_ads WHERE scored_at IS NULL").first<{ n: number }>();
   return { scored: jev + ai, jev, ai, remaining: left?.n ?? 0 };
 }
 
@@ -614,6 +614,7 @@ export async function saveMedia(env: Env, budget = 30): Promise<{ ads: number; f
     `SELECT *, ${DAYS_RUNNING} AS days FROM competitor_ads WHERE media_saved = 0 AND media IS NOT NULL
      ORDER BY impression_rank IS NULL, impression_rank, first_seen DESC LIMIT 25`,
   ).all<CompetitorAd & { days: number }>();
+  if (!results.length) return { ads: 0, files: 0, remaining: 0 };
   let used = 0;
   let files = 0;
   let done = 0;
@@ -638,7 +639,7 @@ export async function saveMedia(env: Env, budget = 30): Promise<{ ads: number; f
     await env.DB.prepare("UPDATE competitor_ads SET media_saved = 1 WHERE id = ?").bind(ad.id).run();
     done++;
   }
-  const left = await env.DB.prepare("SELECT count(*) AS n FROM competitor_ads WHERE media_saved = 0 AND media IS NOT NULL").first<{ n: number }>();
+  const left = results.length < 25 ? { n: 0 } : await env.DB.prepare("SELECT count(*) AS n FROM competitor_ads WHERE media_saved = 0 AND media IS NOT NULL").first<{ n: number }>();
   if (files) await logActivity(env, "riset", "step", `Mengarsipkan ${files} gambar/video iklan kompetitor`, "cabinet");
   return { ads: done, files, remaining: left?.n ?? 0 };
 }

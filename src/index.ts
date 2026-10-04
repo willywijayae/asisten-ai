@@ -145,9 +145,11 @@ const app = {
     await secrets.applyStoredConfig(env);
     if (event.cron === "*/5 * * * *") {
       await sendReminders(env);
-      // Sisa pekerjaan riset kompetitor dicicil kecil-kecil (batas 50 subrequest per pemanggilan).
-      await saveMedia(env, 12).catch((err) => console.error("Gagal menyimpan media kompetitor", err));
-      await scorePending(env, 12).catch((err) => console.error("Gagal menilai iklan kompetitor", err));
+    }
+    else if (event.cron === "0 */2 * * *") {
+      // Pekerjaan riset kompetitor dicicil tiap 2 jam (bukan tiap 5 menit, hemat limit D1 rows read).
+      await saveMedia(env, 15).catch((err) => console.error("Gagal menyimpan media kompetitor", err));
+      await scorePending(env, 15).catch((err) => console.error("Gagal menilai iklan kompetitor", err));
     }
     else if (event.cron === "0 0 * * *") {
       await pruneActivity(env).catch((err) => console.error("Gagal membersihkan aktivitas", err));

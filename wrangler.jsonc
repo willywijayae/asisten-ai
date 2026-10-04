@@ -45,6 +45,7 @@
   "triggers": {
     "crons": [
       "*/5 * * * *", // cek pengingat tiap 5 menit
+      "0 */2 * * *", // tiap 2 jam: cicil media & penilaian iklan kompetitor
       "0 0 * * *",   // 07:00 WIB — briefing pagi
       "0 14 * * *",  // 21:00 WIB — rekap malam
       "0 13 * * SUN" // Minggu 20:00 WIB — review mingguan CEO
