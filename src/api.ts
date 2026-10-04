@@ -213,6 +213,32 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
     }
   }
 
+  if (path === "/system" && method === "GET") {
+    const tg = new Telegram(env.TELEGRAM_BOT_TOKEN);
+    const [bot, webhook] = await Promise.all([
+      tg.call<{ username: string }>("getMe", {}).catch(() => null),
+      tg.call<{ pending_update_count: number; last_error_message?: string; last_error_date?: number }>(
+        "getWebhookInfo",
+        {},
+      ).catch(() => null),
+    ]);
+    return json({
+      bot: bot ? `@${bot.username}` : null,
+      webhook: webhook && {
+        pending: webhook.pending_update_count,
+        lastError: webhook.last_error_message ?? null,
+        lastErrorAt: webhook.last_error_date ? new Date(webhook.last_error_date * 1000).toISOString() : null,
+      },
+      modelFast: env.MODEL_FAST,
+      modelSmart: env.MODEL_SMART,
+      fallbackModel: env.FALLBACK_MODEL,
+      puterConnected: !!env.HERMES_API_ENDPOINT,
+      timezone: env.TIMEZONE_OFFSET,
+    });
+  }
+
+
+  // --- Protected: butuh login ---
   if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
 
   // --- Pengaturan: kunci/token & konektor MCP (nilai tidak pernah dikirim balik, hanya status) ---
@@ -543,29 +569,7 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
   }
 
   // --- Sistem ---
-  if (path === "/system" && method === "GET") {
-    const tg = new Telegram(env.TELEGRAM_BOT_TOKEN);
-    const [bot, webhook] = await Promise.all([
-      tg.call<{ username: string }>("getMe", {}).catch(() => null),
-      tg.call<{ pending_update_count: number; last_error_message?: string; last_error_date?: number }>(
-        "getWebhookInfo",
-        {},
-      ).catch(() => null),
-    ]);
-    return json({
-      bot: bot ? `@${bot.username}` : null,
-      webhook: webhook && {
-        pending: webhook.pending_update_count,
-        lastError: webhook.last_error_message ?? null,
-        lastErrorAt: webhook.last_error_date ? new Date(webhook.last_error_date * 1000).toISOString() : null,
-      },
-      modelFast: env.MODEL_FAST,
-      modelSmart: env.MODEL_SMART,
-      fallbackModel: env.FALLBACK_MODEL,
-      puterConnected: !!env.HERMES_API_ENDPOINT,
-      timezone: env.TIMEZONE_OFFSET,
-    });
-  }
+
   if (path === "/review" && method === "POST") {
     const { focus, noteId } = await weeklyReview(env);
     return json({ focus, noteId });
