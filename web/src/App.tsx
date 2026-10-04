@@ -15,6 +15,7 @@ import { Competitors } from "./pages/Competitors";
 import { ImportAds } from "./pages/ImportAds";
 import { Studio } from "./pages/Studio";
 import { PaidAds } from "./pages/PaidAds";
+import { MetaAds } from "./pages/MetaAds";
 import { Intel } from "./pages/Intel";
 
 export function App() {
@@ -59,6 +60,7 @@ export function App() {
   else if (path.startsWith("/kompetitor")) page = <Competitors />;
   else if (path.startsWith("/impor-iklan")) page = <ImportAds />;
   else if (path.startsWith("/studio")) page = <Studio />;
+  else if (path.startsWith("/meta-ads")) page = <MetaAds />;
   else if (path.startsWith("/paid-ads")) page = <PaidAds />;
   else if (path.startsWith("/intel")) page = <Intel />;
   else if (path.startsWith("/kantor")) page = <Office onChanged={refreshBadges} />;

@@ -88,3 +88,17 @@ export async function lastSync(env: Env): Promise<Record<string, unknown> | null
   const row = await profile.getSetting(env, STATUS_KEY);
   try { return row?.value ? JSON.parse(row.value) : null; } catch { return null; }
 }
+
+import { complete } from "./agent";
+
+const SYS = "Kamu Analis Iklan senior (Performance Marketing). Jawab dalam Bahasa Indonesia, lugas, pakai angka aktual dari data, jangan mengarang metrik. Format markdown ringkas.";
+
+/** mode "all": analisa seluruh tabel. mode "row": breakdown satu baris (iklan/kampanye) dibanding rata-rata tabel. */
+export async function analyzeMetaAds(env: Env, data: any[], row?: any): Promise<string> {
+  const table = JSON.stringify(data.slice(0, 120));
+  const user = row
+    ? `Data seluruh iklan (konteks pembanding):\n${table}\n\nBreakdown mendalam untuk baris ini:\n${JSON.stringify(row)}\n\nJelaskan: 1) performa vs rata-rata tabel, 2) masalah/peluang (CTR, CPM, CPC, frekuensi, CPA/ROAS jika ada), 3) keputusan: matikan / pertahankan / scale / tes kreatif baru, beserta angka budget atau langkah konkret.`
+    : `Data ekspor Meta Ads:\n${table}\n\nBuat analisa lengkap: 1) Ringkasan (total spend, hasil, CPA/ROAS), 2) Top performer & yang boncos, 3) Diagnosa (kreatif, audiens, frekuensi, biaya), 4) Action plan prioritas (matikan, scale, tes berikutnya) dengan angka konkret.`;
+  const res = await complete(env, { system: SYS, user, tier: "smart", actor: "opus", maxTokens: 3000 });
+  return res.text;
+}

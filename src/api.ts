@@ -94,6 +94,15 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
   const path = url.pathname.replace(/^\/api/, "") || "/";
   const method = req.method;
 
+  // Meta Ads Analytics
+  if (path === "/meta-ads/analyze" && method === "POST") {
+    if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
+    const { data, row } = await readJson(req);
+    if (!Array.isArray(data)) throw new HttpError(400, "data harus array");
+    const analysis = await meta.analyzeMetaAds(env, data, row);
+    return json({ analysis });
+  }
+
   // Semua request yang mengubah data wajib JSON: form lintas situs tidak bisa mengirim ini tanpa CORS.
   // Video buatan Claude (di browser pemilik) masuk lewat tautan bertanda tangan, tanpa cookie.
   if (path === "/studio/browser-upload" || path === "/studio/browser-status") {
