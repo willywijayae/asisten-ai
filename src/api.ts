@@ -261,8 +261,12 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
     await secrets.save(env, { INGEST_KEY: k });
     return json({ key: k }); // satu-satunya saat nilai ditampilkan; setelah ini hanya 4 karakter terakhir
   }
-  if (path === "/settings/meta/test" && method === "POST") return json(await meta.testMeta(env));
+  if (path === "/settings/meta/test" && method === "POST") {
+    await secrets.applyStoredConfig(env);
+    return json(await meta.testMeta(env));
+  }
   if (path === "/settings/meta/sync" && method === "POST") {
+    await secrets.applyStoredConfig(env);
     try {
       const r = await meta.syncMetaAds(env);
       ctx.waitUntil(intel.detectSignals(env).then(() => intel.feedbackLoop(env)).catch((e) => console.error("Pasca-sync gagal", e)));
