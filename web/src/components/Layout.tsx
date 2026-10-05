@@ -63,9 +63,9 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
 
   return (
     <div className="min-h-dvh md:flex">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-surface px-3 py-5 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-line bg-surface px-3 py-5 md:flex">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-accent text-accent-fg">
+          <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-accent-fg shadow-sm">
             <Brain className="size-4.5" />
           </div>
           <div className="leading-tight">
@@ -73,16 +73,19 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
             <p className="text-[11px] text-muted">Asisten pribadi</p>
           </div>
         </div>
-        <nav className="space-y-5">
+        <nav className="space-y-5" aria-label="Navigasi utama">
           {NAV.map((g) => (
             <div key={g.group}>
-              <p className="mb-1.5 px-2 text-[11px] font-medium uppercase tracking-wider text-muted">{g.group}</p>
+              <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted/80">{g.group}</p>
               {g.items.map((item) => (
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition ${
-                    active(item.path) ? "bg-accent-soft font-medium text-accent" : "text-muted hover:bg-surface-2 hover:text-fg"
+                  aria-current={active(item.path) ? "page" : undefined}
+                  className={`relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors duration-150 ${
+                    active(item.path)
+                      ? "bg-accent-soft font-semibold text-accent before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-accent"
+                      : "text-muted hover:bg-surface-2 hover:text-fg"
                   }`}
                 >
                   <item.icon className="size-4" />
@@ -106,9 +109,11 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
           <Link
             key={item.path}
             to={item.path}
-            className={`relative flex min-w-16 flex-1 shrink-0 flex-col items-center gap-0.5 py-2.5 text-[10px] ${active(item.path) ? "text-accent" : "text-muted"}`}
+            className={`relative flex min-w-16 flex-1 shrink-0 flex-col items-center gap-0.5 py-2 text-[10px] transition-colors ${active(item.path) ? "font-semibold text-accent" : "text-muted"}`}
           >
-            <item.icon className="size-5" />
+            <span className={`flex h-6 w-11 items-center justify-center rounded-full transition-colors ${active(item.path) ? "bg-accent-soft" : ""}`}>
+              <item.icon className="size-5" />
+            </span>
             {item.short}
             {!!badges?.[item.path] && <span className="absolute right-1/4 top-1.5 size-2 rounded-full bg-warn" />}
           </Link>

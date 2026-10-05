@@ -4,8 +4,8 @@ import { Loader2, X } from "lucide-react";
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-accent text-accent-fg hover:opacity-90",
-  secondary: "border border-line bg-surface text-fg hover:bg-surface-2",
+  primary: "bg-accent text-accent-fg shadow-sm hover:brightness-110 active:brightness-95",
+  secondary: "border border-line bg-surface text-fg shadow-sm hover:border-accent/40 hover:bg-surface-2",
   ghost: "text-muted hover:bg-surface-2 hover:text-fg",
   danger: "border border-line bg-surface text-danger hover:bg-danger-soft",
 };
@@ -23,7 +23,7 @@ export function Button({
     <button
       {...props}
       disabled={props.disabled || loading}
-      className={`inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${sizing} ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${sizing} ${VARIANTS[variant]} ${className}`}
     >
       {loading && <Loader2 className="size-4 animate-spin" />}
       {children}
@@ -32,13 +32,13 @@ export function Button({
 }
 
 export function Card({ className = "", children }: { className?: string; children: ReactNode }) {
-  return <div className={`rounded-xl border border-line bg-surface ${className}`}>{children}</div>;
+  return <div className={`rounded-xl border border-line bg-surface shadow-[var(--shadow-card)] ${className}`}>{children}</div>;
 }
 
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <div className="mb-3 flex items-center justify-between gap-3">
-      <h2 className="text-sm font-semibold text-fg">{children}</h2>
+      <h2 className="text-sm font-semibold tracking-tight text-fg">{children}</h2>
       {action}
     </div>
   );
@@ -55,7 +55,7 @@ const TONES: Record<Tone, string> = {
 
 export function Badge({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${TONES[tone]}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${TONES[tone]}`}>
       {children}
     </span>
   );
@@ -105,7 +105,7 @@ export function Modal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 backdrop-blur-sm p-0 sm:items-center sm:p-4" onMouseDown={onClose}>
       <div
         role="dialog"
         aria-modal="true"
@@ -140,7 +140,7 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
       </div>
       {action}

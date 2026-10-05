@@ -71,18 +71,18 @@ export function Dashboard({ onChanged }: { onChanged: () => void }) {
         <p className="text-sm text-muted">{todayLabel()}</p>
         <h1 className="text-2xl font-semibold tracking-tight">
           {greeting()}
-          {ownerName ? `, ${ownerName}` : ""} 👋
+          {ownerName ? `, ${ownerName}` : ""}
         </h1>
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {stats.map((s) => (
-          <Card key={s.label} className="p-4">
+          <Card key={s.label} className="p-4 transition-shadow duration-150 hover:shadow-md">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted">{s.label}</p>
-              <s.icon className={`size-4 ${s.tone}`} />
+              <span className="flex size-7 items-center justify-center rounded-lg bg-surface-2"><s.icon className={`size-4 ${s.tone}`} /></span>
             </div>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">{s.value}</p>
+            <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{s.value}</p>
           </Card>
         ))}
       </div>
