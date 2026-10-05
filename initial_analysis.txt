@@ -1,0 +1,220 @@
+
+
+# 📊 Dashboard Analisis Meta Ads — SVO BISNISHACK
+**Periode: 1–4 Oktober 2026 | Ad Set: Broad ALL kecuali Papua**
+
+---
+
+## 1. RINGKASAN PERFORMA KESELURUHAN
+
+### 💰 Metrik Utama
+
+| Metrik | Nilai |
+|---|---|
+| **Total Spend** | Rp 3.669.251 |
+| **Total Purchases** | 7 |
+| **Avg CPA (Cost/Purchase)** | Rp 524.179 |
+| **Blended ROAS** | ~1,91× *(estimasi dari weighted ROAS)* |
+| **Total Impressions** | 73.891 |
+| **Total Reach** | 58.411 |
+| **Frequency** | 1,26× |
+
+### 🔽 Analisis Funnel (Agregat)
+
+| Stage | Volume | Rate ke Stage Berikutnya |
+|---|---|---|
+| **Landing Page Views** | 685 | — |
+| **Adds to Cart** | 98 | **14,31%** (LPV → ATC) |
+| **Contacts** | 47 | **47,96%** (ATC → Contact) |
+| **Purchases** | 7 | **14,89%** (Contact → Purchase) |
+
+**Funnel end-to-end: LPV → Purchase = 1,02%**
+
+> ⚠️ **Bottleneck terbesar:** Contact → Purchase (hanya 14,89%). Dari 47 orang yang kontak, cuma 7 yang beli. Ini menunjukkan masalah di **closing/follow-up/offer**, bukan traffic.
+
+---
+
+## 2. RANKING IKLAN: TERBAIK → TERBURUK
+
+### 🏆 #1 — Ads06 (⭐ WINNER)
+
+| Metrik | Nilai |
+|---|---|
+| Spend | Rp 365.753 |
+| Purchases | 2 |
+| CPA | **Rp 182.877** ✅ terendah |
+| ROAS | **5,41×** ✅ tertinggi |
+| LPV → ATC | 13,33% (6/45) |
+| ATC → Contact | 83,33% (5/6) |
+| Contact → Purchase | 40,00% (2/5) |
+| CPM | Rp 75.426 |
+
+> **Verdict:** CPA paling murah, ROAS paling tinggi. Conversion rate contact→purchase terbaik di 40%. **Siap di-scale.**
+
+---
+
+### 🥈 #2 — Ads02 (POTENTIAL — Volume Terbesar)
+
+| Metrik | Nilai |
+|---|---|
+| Spend | Rp 1.995.932 |
+| Purchases | 4 |
+| CPA | **Rp 498.983** |
+| ROAS | **1,98×** |
+| LPV → ATC | 15,33% (63/411) ✅ terbaik |
+| ATC → Contact | 41,27% (26/63) |
+| Contact → Purchase | 15,38% (4/26) |
+| CPM | Rp 39.733 |
+| Quality | Below average ⚠️ |
+| Engagement | Above average ✅ |
+| Conversion | Below average ⚠️ |
+
+> **Verdict:** Volume paling besar, CPM paling efisien, ATC rate tertinggi. Tapi conversion lemah → 26 kontak hanya 4 beli. Butuh optimasi closing. **Pertahankan, perbaiki.**
+
+---
+
+### 🥉 #3 — Ads03 (LEARNING — Data Belum Cukup)
+
+| Metrik | Nilai |
+|---|---|
+| Spend | Rp 82.213 |
+| Purchases | 0 |
+| CPA | — |
+| ROAS | 0 |
+| LPV → ATC | **19,23%** (5/26) ✅ tertinggi! |
+| ATC → Contact | 40,00% (2/5) |
+| Contact → Purchase | 0% (0/2) |
+| Cost/Contact | Rp 41.107 ✅ termurah |
+
+> **Verdict:** Spend masih terlalu kecil untuk menilai. Tapi sinyal awal bagus — ATC rate tertinggi & cost/contact termurah. **Beri budget tambahan untuk testing.**
+
+---
+
+### #4 — Ads01 (UNDERPERFORMER)
+
+| Metrik | Nilai |
+|---|---|
+| Spend | Rp 1.072.982 |
+| Purchases | 1 |
+| CPA | **Rp 1.072.982** ❌ tertinggi |
+| ROAS | **0,92×** ❌ rugi |
+| LPV → ATC | 14,69% (21/143) |
+| ATC → Contact | 57,14% (12/21) |
+| Contact → Purchase | **8,33%** (1/12) ❌ |
+| Quality | Average |
+| Engagement | Above average ✅ |
+| Conversion | Below average ❌ |
+
+> **Verdict:** Sudah spend >1 juta, ROAS di bawah 1× (rugi). Engagement bagus tapi gagal convert. 12 orang kontak hanya 1 beli. **Matikan atau overhaul total.**
+
+---
+
+### #5 — Ads05 (UNDERPERFORMER)
+
+| Metrik | Nilai |
+|---|---|
+| Spend | Rp 146.062 |
+| Purchases | 0 |
+| ROAS | 0 |
+| LPV → ATC | 5,36% (3/56) ❌ terendah |
+| ATC → Contact | 66,67% (2/3) |
+| Contact → Purchase | 0% |
+
+> **Verdict:** ATC rate sangat rendah (5,36%). Landing page atau offer tidak resonan dengan audience dari ad ini. **Matikan.**
+
+---
+
+### #6 — Ads04 (DEAD — Tidak Ada Data)
+
+| Metrik | Nilai |
+|---|---|
+| Spend | Rp 6.309 |
+| Semua konversi | 0 |
+
+> **Verdict:** Terlalu kecil, nol konversi. Kemungkinan sudah auto-throttled oleh Meta. **Matikan.**
+
+---
+
+## 3. DIAGNOSA MASALAH UTAMA
+
+### 🔴 Masalah #1: CLOSING / FOLLOW-UP (PALING KRITIS)
+
+```
+47 orang KONTAK → hanya 7 PURCHASE (14,89%)
+```
+
+- Ini **bukan masalah iklan**, ini masalah **setelah klik**.
+- Kemungkinan: respons CS lambat, script closing lemah, tidak ada urgency/incentive saat follow-up, atau harga terasa mahal setelah kontak.
+- **Ads06 close 40%** vs **Ads01 close 8,33%** → kemungkinan segmen audience atau timing kontak berbeda.
+
+### 🟡 Masalah #2: CONVERSION RATE RANKING META (Below Average)
+
+- Ads01 & Ads02 sama-sama ditandai **"Below average – bottom 35%"** di conversion.
+- Artinya Meta pixel mendeteksi bahwa orang yang klik iklan ini **tidak menyelesaikan action** secara konsisten.
+- Dampak: Meta akan charge CPM lebih mahal & distribusi menurun seiring waktu.
+
+### 🟡 Masalah #3: QUALITY SCORE Ads02 (Below Average)
+
+- Ads02 punya volume terbesar tapi quality **below average**.
+- Ini biasanya sinyal: **kreaitf dianggap "spammy" atau misleading** oleh audience (hide/report).
+- Ironisnya engagement above average → orang react/comment tapi juga banyak yang negatif.
+
+### 🟢 Masalah #4: LANDING PAGE (Moderat)
+
+- LPV → ATC rata-rata 14,31% — **cukup OK** untuk e-commerce Indonesia.
+- Kecuali Ads05 (5,36%) — kemungkinan mismatch antara pesan iklan dan landing page.
+
+---
+
+## 4. ACTION PLAN — BESOK PAGI
+
+### ✅ SCALE: Ads06
+
+| Action | Detail |
+|---|---|
+| **Naikkan budget** | Dari saat ini → **Rp 250.000–350.000/hari** (gradual, naikkan 20-30% per hari, jangan langsung 2×) |
+| **Pantau** | Jika CPA tetap < Rp 250.000 setelah 3 hari, scale lagi ke Rp 500.000/hari |
+| **Duplikasi** | Buat 1 duplicate ad set dengan budget terpisah untuk test stabilitas |
+
+### ✅ BERI BUDGET TEST: Ads03
+
+| Action | Detail |
+|---|---|
+| **Alokasi** | **Rp 150.000–200.000/hari** selama 3-4 hari |
+| **Target** | Kumpulkan minimal 5-8 contacts untuk validasi apakah bisa convert |
+| **Kill trigger** | Jika setelah spend Rp 500.000 total masih 0 purchase → matikan |
+
+### ⚠️ PERTAHANKAN DENGAN CATATAN: Ads02
+
+| Action | Detail |
+|---|---|
+| **Jangan naikkan budget**, pertahankan di level saat ini (~Rp 500.000/hari) |
+| **Buat variasi kreatif baru** (Ads02-B) untuk perbaiki quality score — ubah hook pertama 3 detik, kurangi elemen clickbait |
+| **Fokus perbaiki closing rate** — 26 contacts tapi hanya 4 purchase |
+
+### 🛑 MATIKAN: Ads01, Ads04, Ads05
+
+| Ad | Alasan |
+|---|---|
+| **Ads01** | CPA Rp 1.072.982, ROAS 0,92× (rugi). Spend sudah >1 juta, data cukup untuk conclude: **gagal.** |
+| **Ads04** | Nol konversi, throttled. Tidak ada sinyal positif. |
+| **Ads05** | ATC rate 5,36% — audience tidak tertarik setelah klik. Nol purchase. |
+
+### 📋 Budget Rekomendasi Harian (Total ~Rp 900.000–1.050.000/hari)
+
+| Ad | Budget/Hari |
+|---|---|
+| Ads06 (scale) | Rp 300.000 |
+| Ads02 (maintain) | Rp 500.000 |
+| Ads03 (test) | Rp 150.000 |
+| Ads01, 04, 05 | **Rp 0 (OFF)** |
+| **Total** | **~Rp 950.000/hari** |
+
+> Sebelumnya spend rata-rata ~Rp 917.000/hari (Rp 3,67jt / 4 hari) → budget relatif sama, tapi **alokasi jauh lebih efisien**.
+
+---
+
+### 🧪 Langkah Testing Berikutnya (Minggu Depan)
+
+| Prioritas | Test | Detail |
+|
