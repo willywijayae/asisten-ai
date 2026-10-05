@@ -91,7 +91,7 @@ export function PaidAds() {
             key={x.id}
             onClick={() => setTab(x.id)}
             className={`h-9 rounded-md px-4 text-sm font-medium transition max-md:h-10 ${
-              tab === x.id ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"
+              tab === x.id ? "border border-accent/30 text-accent" : "text-muted hover:text-fg"
             }`}
           >
             {x.name}

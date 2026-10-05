@@ -113,7 +113,7 @@ export function Intel() {
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`relative h-9 shrink-0 rounded-md px-3.5 text-sm font-medium transition max-md:h-10 ${tab === id ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}
+            className={`relative h-9 shrink-0 rounded-md px-3.5 text-sm font-medium transition max-md:h-10 ${tab === id ? "border border-accent/30 text-accent" : "text-muted hover:text-fg"}`}
           >
             {label}
             {id === "alert" && overview.alerts_unseen > 0 && (

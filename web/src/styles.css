@@ -8,7 +8,7 @@
   --muted: #64748b;
   --line: #e2e8f0;
   --accent: #6366f1;
-  --accent-soft: #f1f5f9;
+  --accent-soft: #e2e8f0;
   --accent-fg: #ffffff;
   --danger: #e11d48;
   --danger-soft: #ffe4e9;
@@ -29,7 +29,7 @@
     --muted: #94a3b8;
     --line: #475569;
     --accent: #818cf8;
-    --accent-soft: #1e293b;
+    --accent-soft: #e2e8f0;
     --accent-fg: #f1f5f9;
     --danger: #fb7185;
     --danger-soft: #7f1d1d;

@@ -69,7 +69,7 @@ export function ConfigPanel() {
             return (
               <Card key={g.id} className="p-4">
                 <div className="flex items-start gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><KeyRound className="size-4" /></div>
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-accent/30 text-accent"><KeyRound className="size-4" /></div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{g.title}</p>
                     <p className="text-xs text-muted">{g.desc}</p>

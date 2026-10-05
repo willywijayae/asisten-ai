@@ -47,7 +47,7 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
 type Tone = "neutral" | "accent" | "danger" | "warn" | "ok";
 const TONES: Record<Tone, string> = {
   neutral: "bg-surface-2 text-muted",
-  accent: "bg-accent-soft text-accent",
+  accent: "border border-accent/30 text-accent",
   danger: "bg-danger-soft text-danger",
   warn: "bg-warn-soft text-warn",
   ok: "bg-ok-soft text-ok",

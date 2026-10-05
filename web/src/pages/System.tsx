@@ -97,7 +97,7 @@ export function System({ onLogout }: { onLogout: () => void }) {
             <SectionTitle>Konektor Claude (MCP)</SectionTitle>
             <Card className="p-4">
               <div className="flex items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-accent/30 text-accent">
                   <Plug className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1 text-sm">

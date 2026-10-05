@@ -339,7 +339,7 @@ function RemixButton({ ad, className = "" }: { ad: Ad; className?: string }) {
           </Button>
         </>
       ) : state.status === "pending" ? (
-        <span className="inline-flex items-center gap-1.5 rounded-lg bg-accent-soft px-2.5 py-1.5 text-xs font-medium text-accent">
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-accent/30 bg-surface-2/60 px-2.5 py-1.5 text-xs font-medium text-accent">
           <Loader2 className="size-3.5 animate-spin" /> Tim marketing sedang membuat 5 konten…
         </span>
       ) : (
@@ -437,7 +437,7 @@ function RemixModal({ id, onClose }: { id: number; onClose: () => void }) {
                   </div>
                   <CopyButton text={full} />
                 </div>
-                <p className="mt-2 rounded-md bg-accent-soft px-2.5 py-1.5 text-sm font-medium text-accent">“{idea.hook}”</p>
+                <p className="mt-2 rounded-md border border-accent/30 bg-surface-2/60 px-2.5 py-1.5 text-sm font-medium text-accent">“{idea.hook}”</p>
                 {!!idea.scenes?.length && (
                   <div className="mt-3 overflow-x-auto">
                     <table className="w-full text-xs">
@@ -664,7 +664,7 @@ function Gallery({ sum, reloadSum }: { sum: Summary; reloadSum: () => void }) {
                     key={p.page_id}
                     onClick={() => setFilters((f) => ({ ...f, page: f.page === p.page_id ? "" : p.page_id }))}
                     className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-surface-2 ${
-                      filters.page === p.page_id ? "bg-accent-soft" : ""
+                      filters.page === p.page_id ? "bg-surface-2" : ""
                     }`}
                   >
                     <span className="min-w-0 flex-1">
@@ -808,7 +808,7 @@ function Reports({ sum }: { sum: Summary }) {
               <button
                 key={r.id}
                 onClick={() => setOpenId(r.id)}
-                className={`block w-full px-3 py-2.5 text-left text-sm hover:bg-surface-2 ${openId === r.id ? "bg-accent-soft" : ""}`}
+                className={`block w-full px-3 py-2.5 text-left text-sm hover:bg-surface-2 ${openId === r.id ? "bg-surface-2" : ""}`}
               >
                 <span className="line-clamp-2 font-medium">{r.title}</span>
                 <span className="text-[11px] text-muted">

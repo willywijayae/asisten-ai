@@ -51,7 +51,7 @@ export function Notes() {
               key={t.tag}
               onClick={() => setTag(tag === t.tag ? null : t.tag)}
               className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition ${
-                tag === t.tag ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"
+                tag === t.tag ? "border-accent border border-accent/30 text-accent" : "border-line text-muted hover:text-fg"
               }`}
             >
               #{t.tag} <span className="opacity-60">{t.count}</span>

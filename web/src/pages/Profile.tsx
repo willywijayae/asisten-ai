@@ -88,7 +88,7 @@ export function Profile() {
           </SectionTitle>
           <Card className="p-4">
             {data.interviewing && (
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-accent/30 bg-surface-2/60 px-3 py-2 text-sm text-accent">
                 <span>Wawancara sedang berjalan. Jawab pertanyaannya di Telegram atau Chat AI.</span>
                 <Button size="sm" variant="ghost" onClick={() => navigate("/chat")}>
                   <MessageCircle className="size-3.5" /> Buka chat

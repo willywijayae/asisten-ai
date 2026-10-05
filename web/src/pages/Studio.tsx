@@ -294,7 +294,7 @@ function ProjectView({ id, onBack }: { id: number; onBack: () => void }) {
               disabled={!reachable}
               onClick={() => setStep(s.key)}
               className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs transition sm:flex-row sm:justify-center sm:gap-2 sm:text-sm ${
-                current === s.key ? "border-accent bg-accent-soft text-accent" : "border-line bg-surface text-muted"
+                current === s.key ? "border-accent border border-accent/30 text-accent" : "border-line bg-surface text-muted"
               } ${reachable ? "hover:border-accent" : "opacity-50"}`}
             >
               {approved ? <Check className="size-4 text-ok" /> : p.busy === s.key ? <Loader2 className="size-4 animate-spin" /> : <s.icon className="size-4" />}
@@ -625,7 +625,7 @@ function ProductStep({ p, onGenerate, onSave }: { p: Project; onGenerate: (o: Re
             <p className="mb-2 text-xs font-medium text-muted">Pilih hook pembuka</p>
             <div className="space-y-2">
               {d.hooks.map((h, i) => (
-                <label key={i} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${d.chosen_hook === i ? "border-accent bg-accent-soft" : "border-line"}`}>
+                <label key={i} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${d.chosen_hook === i ? "border-accent bg-surface-2" : "border-line"}`}>
                   <input type="radio" name="hook" checked={d.chosen_hook === i} onChange={() => setD({ ...d, chosen_hook: i })} className="mt-1" />
                   <input
                     id={`pr-hook-${i}`}
@@ -1008,7 +1008,7 @@ function ClaudeCard({ p, provider, reload, agentPrompt }: { p: Project; provider
   return (
     <Card className="p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-accent/30 text-accent">
           {active ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5" />}
         </span>
         <div className="min-w-0 flex-1 text-sm">
