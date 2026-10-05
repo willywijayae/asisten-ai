@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Box, Brain, BarChart3, CheckSquare, Clapperboard, Lightbulb, Megaphone, Radar, LayoutDashboard, MessageCircle, Settings, UserRound, type LucideIcon } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Box, Brain, BarChart3, CheckSquare, Clapperboard, Lightbulb, Megaphone, Radar, LayoutDashboard, Menu, MessageCircle, Settings, UserRound, X, type LucideIcon } from "lucide-react";
 import { useRouter } from "./app-context";
 
 export interface NavItem {
@@ -58,67 +58,109 @@ export function Link({ to, className, children }: { to: string; className?: stri
 
 export function Layout({ children, badges }: { children: ReactNode; badges?: Record<string, number> }) {
   const { path } = useRouter();
+  const [open, setOpen] = useState(false);
   const active = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
-  const all = NAV.flatMap((g) => g.items);
+  const current = NAV.flatMap((g) => g.items).find((i) => active(i.path))?.label ?? "Second Brain";
+  const totalBadge = Object.values(badges ?? {}).reduce((a, b) => a + b, 0);
+
+  // Tutup drawer saat pindah halaman, kunci scroll saat terbuka, Esc menutup.
+  useEffect(() => setOpen(false), [path]);
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const brand = (
+    <div className="flex items-center gap-2 px-2">
+      <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-white shadow-md">
+        <Brain className="size-4.5" />
+      </div>
+      <div className="leading-tight">
+        <p className="text-sm font-semibold">Second Brain</p>
+        <p className="text-[11px] text-muted">Asisten pribadi</p>
+      </div>
+    </div>
+  );
+
+  const nav = (
+    <nav className="space-y-5" aria-label="Navigasi utama">
+      {NAV.map((g) => (
+        <div key={g.group}>
+          <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted/80">{g.group}</p>
+          {g.items.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              aria-current={active(item.path) ? "page" : undefined}
+              className={`relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors duration-150 max-md:py-3 ${
+                active(item.path)
+                  ? "bg-accent-soft font-semibold text-accent before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-accent"
+                  : "text-muted hover:bg-surface-2 hover:text-fg"
+              }`}
+            >
+              <item.icon className="size-4" />
+              <span className="flex-1">{item.label}</span>
+              {!!badges?.[item.path] && (
+                <span className="rounded-full bg-warn-soft px-1.5 text-[11px] font-medium text-warn">{badges[item.path]}</span>
+              )}
+            </Link>
+          ))}
+        </div>
+      ))}
+    </nav>
+  );
 
   return (
     <div className="min-h-dvh md:flex">
-      <aside className="sticky top-0 hidden h-screen w-60 bg-white shrink-0 flex-col overflow-y-auto border-r border-line bg-surface-2 px-3 py-5 md:flex">
-        <div className="mb-6 flex items-center gap-2 px-2">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-white shadow-md">
-            <Brain className="size-4.5" />
-          </div>
-          <div className="leading-tight">
-            <p className="text-sm font-semibold">Second Brain</p>
-            <p className="text-[11px] text-muted">Asisten pribadi</p>
-          </div>
-        </div>
-        <nav className="space-y-5" aria-label="Navigasi utama">
-          {NAV.map((g) => (
-            <div key={g.group}>
-              <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted/80">{g.group}</p>
-              {g.items.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  aria-current={active(item.path) ? "page" : undefined}
-                  className={`relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors duration-150 ${
-                    active(item.path)
-                      ? "bg-accent-soft font-semibold text-accent before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-accent"
-                      : "text-muted hover:bg-surface-2 hover:text-fg"
-                  }`}
-                >
-                  <item.icon className="size-4" />
-                  <span className="flex-1">{item.label}</span>
-                  {!!badges?.[item.path] && (
-                    <span className="rounded-full bg-warn-soft px-1.5 text-[11px] font-medium text-warn">{badges[item.path]}</span>
-                  )}
-                </Link>
-              ))}
-            </div>
-          ))}
-        </nav>
+      {/* Desktop: sidebar tetap */}
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-line bg-white px-3 py-5 md:flex">
+        <div className="mb-6">{brand}</div>
+        {nav}
       </aside>
 
-      <main className="min-w-0 flex-1 px-4 pb-28 pt-6 md:px-10 md:pb-10 md:pt-8">
+      {/* HP: bar atas + sidebar geser */}
+      <header className="safe-top sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-line bg-white/95 px-3 backdrop-blur md:hidden">
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Buka menu"
+          aria-expanded={open}
+          className="relative flex size-10 items-center justify-center rounded-lg text-fg hover:bg-surface-2"
+        >
+          <Menu className="size-5" />
+          {totalBadge > 0 && <span className="absolute right-2 top-2 size-2 rounded-full bg-warn" />}
+        </button>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold">{current}</p>
+      </header>
+
+      <div
+        className={`fixed inset-0 z-40 bg-black/50 transition-opacity md:hidden ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        onClick={() => setOpen(false)}
+        aria-hidden="true"
+      />
+      <aside
+        role="dialog"
+        aria-label="Menu navigasi"
+        className={`safe-top safe-bottom fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-r border-line bg-white px-3 py-4 shadow-xl transition-transform duration-200 md:hidden ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="mb-5 flex items-center justify-between">
+          {brand}
+          <button onClick={() => setOpen(false)} aria-label="Tutup menu" className="flex size-10 items-center justify-center rounded-lg text-muted hover:bg-surface-2">
+            <X className="size-5" />
+          </button>
+        </div>
+        {nav}
+      </aside>
+
+      <main className="min-w-0 flex-1 px-4 pb-8 pt-4 md:px-10 md:pb-10 md:pt-8">
         <div className={`mx-auto ${path.startsWith("/kantor") ? "max-w-7xl" : "max-w-5xl"}`}>{children}</div>
       </main>
-
-      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 flex overflow-x-auto overscroll-x-contain border-t border-line bg-surface/95 backdrop-blur md:hidden [scrollbar-width:none]">
-        {all.map((item) => (
-          <Link
-            key={item.path}
-            to={item.path}
-            className={`relative flex min-w-16 flex-1 shrink-0 flex-col items-center gap-0.5 py-2 text-[10px] transition-colors ${active(item.path) ? "font-semibold text-accent" : "text-muted"}`}
-          >
-            <span className={`flex h-6 w-11 items-center justify-center rounded-full transition-colors ${active(item.path) ? "bg-accent-soft" : ""}`}>
-              <item.icon className="size-5" />
-            </span>
-            {item.short}
-            {!!badges?.[item.path] && <span className="absolute right-1/4 top-1.5 size-2 rounded-full bg-warn" />}
-          </Link>
-        ))}
-      </nav>
     </div>
   );
 }

@@ -86,7 +86,7 @@ export function Chat({ onChanged }: { onChanged: () => void }) {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-9.5rem)] flex-col md:h-[calc(100dvh-4.5rem)]">
+    <div className="flex h-[calc(100dvh-7.5rem)] flex-col md:h-[calc(100dvh-4.5rem)]">
       <div className="mb-4">
         <h1 className="text-xl font-semibold tracking-tight">Chat AI</h1>
         <p className="mt-0.5 text-sm text-muted">Otak yang sama dengan bot Telegram. Riwayatnya juga sama.</p>
