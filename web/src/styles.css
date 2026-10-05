@@ -1,45 +1,31 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #ffffff;
+  --bg: #f8fafc;
   --surface: #ffffff;
-  --surface-2: #f8fafc;
+  --surface-2: #f1f5f9;
   --fg: #1e293b;
-  --muted: #64748b;
+  --muted: #5b6b82;
   --line: #e2e8f0;
   --accent: #475569;
   --accent-soft: #e2e8f0;
   --accent-fg: #ffffff;
-  --danger: #e11d48;
+  --danger: #be123c;
   --danger-soft: #ffe4e9;
-  --warn: #d97706;
+  --warn: #b45309;
   --warn-soft: #fef3c7;
-  --ok: #059669;
+  --ok: #047857;
   --ok-soft: #d1fae5;
   --shadow-card: 0 4px 20px rgb(0 0 0 / 0.04);
+  /* Sidebar navy: token sendiri, terpisah dari warna konten. */
+  --side-bg: #0f172a;
+  --side-fg: #f1f5f9;
+  --side-muted: #94a3b8;
+  --side-hover: rgb(255 255 255 / 0.06);
+  --side-active-bg: rgb(255 255 255 / 0.10);
+  --side-line: rgb(255 255 255 / 0.08);
+  --side-accent: #60a5fa;
   color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f172a;
-    --surface: #1e293b;
-    --surface-2: #334155;
-    --fg: #f1f5f9;
-    --muted: #94a3b8;
-    --line: #475569;
-    --accent: #cbd5e1;
-    --accent-soft: #e2e8f0;
-    --accent-fg: #f1f5f9;
-    --danger: #fb7185;
-    --danger-soft: #7f1d1d;
-    --warn: #fbbf24;
-    --warn-soft: #78350f;
-    --ok: #34d399;
-    --ok-soft: #1b4332;
-    --shadow-card: 0 4px 20px rgb(0 0 0 / 0.25);
-    color-scheme: dark;
-  }
 }
 
 @theme inline {
@@ -58,6 +44,13 @@
   --color-warn-soft: var(--warn-soft);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
+  --color-side-bg: var(--side-bg);
+  --color-side-fg: var(--side-fg);
+  --color-side-muted: var(--side-muted);
+  --color-side-hover: var(--side-hover);
+  --color-side-active-bg: var(--side-active-bg);
+  --color-side-line: var(--side-line);
+  --color-side-accent: var(--side-accent);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-sans: "DM Sans", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Plus Jakarta Sans", "DM Sans", ui-sans-serif, sans-serif;

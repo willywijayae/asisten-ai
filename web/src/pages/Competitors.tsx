@@ -136,7 +136,7 @@ function signals(a: Ad): { label: string; cls: string }[] {
   const out: { label: string; cls: string }[] = [];
   if (a.days >= 90) out.push({ label: `EVERGREEN ${a.days} HARI`, cls: "bg-[#2E7D32]" });
   if ((a.duplicates ?? 1) >= 3 || (a.impression_rank ?? 99) <= 5) out.push({ label: "SCALING", cls: "bg-[#1565C0]" });
-  if (a.days < 30 && (a.hook ?? 0) >= 2) out.push({ label: "LAYAK DITIRU", cls: "bg-[#B8860B]" });
+  if (a.days < 30 && (a.hook ?? 0) >= 2) out.push({ label: "LAYAK DITIRU", cls: "bg-[#8A6200]" });
   return out;
 }
 
@@ -862,7 +862,7 @@ function ReportView({ id }: { id: number }) {
   return (
     <article className="rounded-2xl bg-[#f6f2f8] p-4 text-[13.5px] leading-relaxed text-[#2f2933] sm:p-6 [color-scheme:light]">
       <h1 className="text-xl font-bold text-[#4F2E3A] sm:text-2xl">{r.title}</h1>
-      {d.subtitle && <p className="mt-1 text-xs text-[#888]">{d.subtitle}</p>}
+      {d.subtitle && <p className="mt-1 text-xs text-[#666]">{d.subtitle}</p>}
       <div className="my-3 h-1 rounded bg-gradient-to-r from-[#7C518E] to-[#9380AC]" />
 
       {!!d.stats?.length && (
@@ -870,7 +870,7 @@ function ReportView({ id }: { id: number }) {
           {d.stats.map((s) => (
             <div key={s.label} className="rounded-xl border border-[#e2d5ea] bg-white px-2 py-2.5 text-center">
               <div className="text-lg font-bold text-[#7C518E]">{s.value}</div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[#888]">{s.label}</div>
+              <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[#666]">{s.label}</div>
             </div>
           ))}
         </div>
@@ -937,7 +937,7 @@ function ReportView({ id }: { id: number }) {
               {ad ? (
                 <AdMedia ad={ad} className="aspect-[9/16] w-28 !bg-[#e9e0ef]" />
               ) : (
-                <div className="flex w-28 shrink-0 items-center justify-center bg-[#e9e0ef] text-[11px] text-[#888]">tanpa media</div>
+                <div className="flex w-28 shrink-0 items-center justify-center bg-[#e9e0ef] text-[11px] text-[#666]">tanpa media</div>
               )}
               <div className="min-w-0 flex-1 px-3 py-2.5">
                 <div className="font-bold text-[#4F2E3A]">
@@ -949,7 +949,7 @@ function ReportView({ id }: { id: number }) {
                   )}
                 </div>
                 {ad && (
-                  <div className="mb-1 text-[11px] text-[#888]">
+                  <div className="mb-1 text-[11px] text-[#666]">
                     {[ad.page_name, ad.media_type === "video" && ad.video_duration ? `video ${ad.video_duration}` : ad.media_type, (ad.duplicates ?? 1) > 1 ? `${ad.duplicates} iklan` : null, ad.started_at ? `sejak ${fmtDate(ad.started_at)}` : null]
                       .filter(Boolean)
                       .join(" · ")}
@@ -1023,7 +1023,7 @@ function ReportView({ id }: { id: number }) {
             {d.plan.map((p, i) => (
               <div key={i}>
                 <h3 className="mb-1.5 mt-3 font-bold text-[#4F2E3A]">
-                  <span className={`mr-1.5 rounded-full px-2 py-0.5 text-[10px] text-white ${["bg-[#C1621B]", "bg-[#7C518E]", "bg-[#2E7D32]"][i % 3]}`}>
+                  <span className={`mr-1.5 rounded-full px-2 py-0.5 text-[10px] text-white ${["bg-[#A8520F]", "bg-[#7C518E]", "bg-[#2E7D32]"][i % 3]}`}>
                     {p.priority}
                   </span>
                   {p.title}
@@ -1045,7 +1045,7 @@ function ReportView({ id }: { id: number }) {
           {d.data_note}
         </div>
       )}
-      <p className="mt-4 text-center text-[11px] text-[#999]">
+      <p className="mt-4 text-center text-[11px] text-[#666]">
         Sumber: Meta Ad Library · {fmtWhen(r.created_at)} · {r.author === "claude" ? "disusun Claude" : "disusun agen Riset"}
       </p>
     </article>

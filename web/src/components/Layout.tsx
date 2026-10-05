@@ -77,12 +77,12 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
 
   const brand = (
     <div className="flex items-center gap-2 px-2">
-      <div className="flex size-9 items-center justify-center rounded-xl bg-slate-700 text-white shadow-md">
+      <div className="flex size-9 items-center justify-center rounded-xl bg-white/10 text-side-fg">
         <Brain className="size-4.5" />
       </div>
       <div className="leading-tight">
-        <p className="text-sm font-semibold">Second Brain</p>
-        <p className="text-[11px] text-muted">Asisten pribadi</p>
+        <p className="text-sm font-semibold text-side-fg">Second Brain</p>
+        <p className="text-[11px] text-side-muted">Asisten pribadi</p>
       </div>
     </div>
   );
@@ -91,21 +91,22 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
     <nav className="space-y-5" aria-label="Navigasi utama">
       {NAV.map((g) => (
         <div key={g.group}>
-          <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted/80">{g.group}</p>
+          <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-side-muted">{g.group}</p>
           {g.items.map((item) => (
             <Link
               key={item.path}
               to={item.path}
               aria-current={active(item.path) ? "page" : undefined}
               className={`relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors duration-150 max-md:py-3 ${
-                active(item.path) ? "font-semibold text-accent"
-                  : "text-muted hover:bg-surface-2 hover:text-fg"
+                active(item.path)
+                  ? "bg-side-active-bg font-semibold text-side-fg before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-side-accent"
+                  : "text-side-muted hover:bg-side-hover hover:text-side-fg"
               }`}
             >
               <item.icon className="size-4" />
               <span className="flex-1">{item.label}</span>
               {!!badges?.[item.path] && (
-                <span className="rounded-full bg-warn-soft px-1.5 text-[11px] font-medium text-warn">{badges[item.path]}</span>
+                <span className="rounded-full bg-amber-400 px-1.5 text-[11px] font-semibold text-slate-900">{badges[item.path]}</span>
               )}
             </Link>
           ))}
@@ -117,13 +118,13 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
   return (
     <div className="min-h-dvh md:flex">
       {/* Desktop: sidebar tetap */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-line bg-white px-3 py-5 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-side-line bg-side-bg px-3 py-5 md:flex">
         <div className="mb-6">{brand}</div>
         {nav}
       </aside>
 
       {/* HP: bar atas + sidebar geser */}
-      <header className="safe-top sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-line bg-white/95 px-3 backdrop-blur md:hidden">
+      <header className="safe-top sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-line bg-surface/95 px-3 backdrop-blur md:hidden">
         <button
           onClick={() => setOpen(true)}
           aria-label="Buka menu"
@@ -144,13 +145,13 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
       <aside
         role="dialog"
         aria-label="Menu navigasi"
-        className={`safe-top safe-bottom fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-r border-line bg-white px-3 py-4 shadow-xl transition-transform duration-200 md:hidden ${
+        className={`safe-top safe-bottom fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-r border-side-line bg-side-bg px-3 py-4 shadow-xl transition-transform duration-200 md:hidden ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="mb-5 flex items-center justify-between">
           {brand}
-          <button onClick={() => setOpen(false)} aria-label="Tutup menu" className="flex size-10 items-center justify-center rounded-lg text-muted hover:bg-surface-2">
+          <button onClick={() => setOpen(false)} aria-label="Tutup menu" className="flex size-10 items-center justify-center rounded-lg text-side-muted hover:bg-side-hover hover:text-side-fg">
             <X className="size-5" />
           </button>
         </div>
