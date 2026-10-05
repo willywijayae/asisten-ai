@@ -14,6 +14,7 @@ import * as competitors from "./competitors";
 import * as studio from "./studio";
 import * as intel from "./intel";
 import * as secrets from "./secrets";
+import * as cron from "./cron";
 import * as meta from "./meta";
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -264,6 +265,19 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
   if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
 
   // --- Pengaturan: kunci/token & konektor MCP (nilai tidak pernah dikirim balik, hanya status) ---
+  if (path === "/settings/cron" && method === "GET") {
+    const off = await cron.disabledJobs(env);
+    return json({ jobs: cron.CRON_JOBS.map((j) => ({ ...j, enabled: !off.has(j.id) })) });
+  }
+  if (path === "/settings/cron" && method === "POST") {
+    const b = await readJson(req);
+    try {
+      await cron.setJobEnabled(env, String(b?.id ?? ""), !!b?.enabled);
+    } catch (e) {
+      throw new HttpError(400, e instanceof Error ? e.message : String(e));
+    }
+    return json({ ok: true });
+  }
   if (path === "/settings/config" && method === "GET") {
     return json({ ...(await secrets.status(env)), meta: { configured: meta.metaConfigured(env), last_sync: await meta.lastSync(env) }, mcp: await secrets.listMcp(env) });
   }

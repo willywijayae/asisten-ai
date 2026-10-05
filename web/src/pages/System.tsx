@@ -16,6 +16,35 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+interface CronJob { id: string; label: string; when: string; hint: string; enabled: boolean }
+
+function CronPanel() {
+  const { data, reload } = useLoad(() => api<{ jobs: CronJob[] }>("/settings/cron"), []);
+  const toast = useToast();
+  const toggle = async (j: CronJob) => {
+    try {
+      await api("/settings/cron", { body: { id: j.id, enabled: !j.enabled } });
+      reload();
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+  if (!data) return <Spinner />;
+  return (
+    <Card className="divide-y divide-line">
+      {data.jobs.map((j) => (
+        <label key={j.id} className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3">
+          <div>
+            <p className="text-sm">{j.label} <span className="text-xs text-muted">· {j.when}</span></p>
+            <p className="text-xs text-muted">{j.hint}</p>
+          </div>
+          <input type="checkbox" role="switch" checked={j.enabled} onChange={() => toggle(j)} className="size-5 shrink-0 accent-slate-700" />
+        </label>
+      ))}
+    </Card>
+  );
+}
+
 export function System({ onLogout }: { onLogout: () => void }) {
   const { data, error } = useLoad(() => api<SystemInfo>("/system"), []);
   const g = useLoad(() => api<GoogleStatus>("/google/status"), []);
@@ -178,6 +207,11 @@ export function System({ onLogout }: { onLogout: () => void }) {
                 </div>
               )}
             </Card>
+          </section>
+
+          <section>
+            <SectionTitle>Jadwal otomatis (cron)</SectionTitle>
+            <CronPanel />
           </section>
 
           <section>

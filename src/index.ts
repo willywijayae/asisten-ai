@@ -18,6 +18,7 @@ import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp";
 import { handleAuthorize } from "./oauth";
 import * as profile from "./profile";
+import { disabledJobs } from "./cron";
 
 const HELP = `Halo! Aku asisten pribadimu 🤖
 
@@ -143,24 +144,30 @@ const app = {
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
     if (!env.OWNER_CHAT_ID) return;
     await secrets.applyStoredConfig(env);
+    const off = await disabledJobs(env); // job yang dimatikan manual di Pengaturan
+    const on = (id: string) => !off.has(id);
     if (event.cron === "*/5 * * * *") {
-      await sendReminders(env);
+      if (on("reminders")) await sendReminders(env);
     }
     else if (event.cron === "0 */2 * * *") {
       // Pekerjaan riset kompetitor dicicil tiap 2 jam (bukan tiap 5 menit, hemat limit D1 rows read).
-      await saveMedia(env, 15).catch((err) => console.error("Gagal menyimpan media kompetitor", err));
-      await scorePending(env, 15).catch((err) => console.error("Gagal menilai iklan kompetitor", err));
+      if (on("competitors")) {
+        await saveMedia(env, 15).catch((err) => console.error("Gagal menyimpan media kompetitor", err));
+        await scorePending(env, 15).catch((err) => console.error("Gagal menilai iklan kompetitor", err));
+      }
     }
     else if (event.cron === "0 0 * * *") {
       await pruneActivity(env).catch((err) => console.error("Gagal membersihkan aktivitas", err));
-      await sendBriefing(env, "morning");
-      if (meta.metaConfigured(env)) await meta.syncMetaAds(env).catch((err) => meta.recordFailure(env, String(err instanceof Error ? err.message : err)));
+      if (on("morning")) await sendBriefing(env, "morning");
+      if (on("meta_sync") && meta.metaConfigured(env)) await meta.syncMetaAds(env).catch((err) => meta.recordFailure(env, String(err instanceof Error ? err.message : err)));
       // Intelijen Kreatif: siklus harian (tag, sinyal pemenang, VOC, feedback loop); Senin pagi + brief mingguan.
-      await intel.runDaily(env).catch((err) => console.error("Intel harian gagal", err));
-      if (intel.isMondayLocal(env)) await intel.weeklyBriefs(env).catch((err) => console.error("Brief mingguan gagal", err));
+      if (on("intel")) {
+        await intel.runDaily(env).catch((err) => console.error("Intel harian gagal", err));
+        if (intel.isMondayLocal(env)) await intel.weeklyBriefs(env).catch((err) => console.error("Brief mingguan gagal", err));
+      }
     }
-    else if (event.cron === "0 14 * * *") await sendBriefing(env, "evening");
-    else if (event.cron === "0 13 * * SUN") await weeklyReview(env);
+    else if (event.cron === "0 14 * * *") { if (on("evening")) await sendBriefing(env, "evening"); }
+    else if (event.cron === "0 13 * * SUN") { if (on("weekly")) await weeklyReview(env); }
   },
 } satisfies ExportedHandler<Env, JobMessage>;
 
