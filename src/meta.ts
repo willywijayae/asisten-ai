@@ -68,10 +68,19 @@ export function mapAd(ad: any): Record<string, unknown> {
 const LPV = ["landing_page_view"];
 const ATC = ["add_to_cart", "offsite_conversion.fb_pixel_add_to_cart"];
 
-export async function getLiveDashboardData(env: Env, datePreset: string = "maximum"): Promise<any[]> {
+export async function getLiveDashboardData(env: Env, datePreset: string = "maximum", since?: string, until?: string): Promise<any[]> {
   if (!metaConfigured(env)) throw new Error("Meta belum dikonfigurasi. Isi Access Token dan Ad Account ID di halaman Pengaturan.");
   
-  const fields = "id,name,effective_status,insights.date_preset(" + datePreset + "){spend,impressions,reach,actions,cost_per_action_type,purchase_roas,quality_ranking,conversion_rate_ranking}";
+  let timeParam = "";
+  if (since && until) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) throw new Error("Format tanggal harus YYYY-MM-DD.");
+    if (since > until) throw new Error("Tanggal mulai tidak boleh setelah tanggal akhir.");
+    timeParam = `time_range({"since":"${since}","until":"${until}"})`;
+  } else {
+    timeParam = `date_preset(${datePreset})`;
+  }
+
+  const fields = "id,name,effective_status,insights." + timeParam + "{spend,impressions,reach,actions,cost_per_action_type,purchase_roas,quality_ranking,conversion_rate_ranking}";
   let url: string | null = `${GRAPH}/${account(env)}/ads?fields=${encodeURIComponent(fields)}&limit=100`;
   const ads: any[] = [];
   

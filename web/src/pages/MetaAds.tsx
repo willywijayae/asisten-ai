@@ -149,6 +149,9 @@ export function MetaAds() {
     return saved || DEFAULT_ANALYSIS;
   });
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [since, setSince] = useState<string>(() => localStorage.getItem("meta_ads_since") || new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10));
+  const [until, setUntil] = useState<string>(() => localStorage.getItem("meta_ads_until") || todayStr);
   const [err, setErr] = useState("");
   const [activeTab, setActiveTab] = useState<"overview" | "analysis">("overview");
 
@@ -221,20 +224,21 @@ export function MetaAds() {
     setBusy("live");
     setErr("");
     try {
-      const res = await api<{ data: Row[] }>("/meta-ads/live?preset=maximum");
+      const res = await api<{ data: Row[] }>(`/meta-ads/live?since=${since}&until=${until}`);
+      try { localStorage.setItem("meta_ads_since", since); localStorage.setItem("meta_ads_until", until); } catch {}
       if (!res.data || res.data.length === 0) {
         setErr("Tidak ada data iklan yang aktif/ditemukan dari Meta API.");
         return;
       }
       setRows(res.data);
-      setFileName("Live Data (Meta API)");
+      setFileName(`Live Meta API · ${since} s/d ${until}`);
       setOverall("");
       setRowAnalysis({});
       setOpen(null);
       
       try {
         localStorage.setItem("meta_ads_custom_rows", JSON.stringify(res.data));
-        localStorage.setItem("meta_ads_custom_filename", "Live Data (Meta API)");
+        localStorage.setItem("meta_ads_custom_filename", `Live Meta API · ${since} s/d ${until}`);
         localStorage.removeItem("meta_ads_custom_analysis");
       } catch {}
       
@@ -351,7 +355,12 @@ export function MetaAds() {
         </div>
 
         
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="date" value={since} max={until} onChange={(e) => setSince(e.target.value)}
+            className="rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-sm" />
+          <span className="text-xs text-muted">s/d</span>
+          <input type="date" value={until} min={since} max={todayStr} onChange={(e) => setUntil(e.target.value)}
+            className="rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-sm" />
           <Button
             variant="secondary"
             onClick={fetchLive}

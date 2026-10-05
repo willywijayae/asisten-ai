@@ -101,7 +101,7 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
     const urlObj = new URL(req.url);
     const preset = urlObj.searchParams.get("preset") || "last_7d";
     try {
-      const data = await meta.getLiveDashboardData(env, preset);
+      const data = await meta.getLiveDashboardData(env, preset, urlObj.searchParams.get("since") || undefined, urlObj.searchParams.get("until") || undefined);
       return json({ data });
     } catch (e: any) {
       throw new HttpError(500, e.message);
