@@ -64,6 +64,48 @@ export function mapAd(ad: any): Record<string, unknown> {
   };
 }
 
+
+const LPV = ["landing_page_view"];
+const ATC = ["add_to_cart", "offsite_conversion.fb_pixel_add_to_cart"];
+
+export async function getLiveDashboardData(env: Env, datePreset: string = "maximum"): Promise<any[]> {
+  if (!metaConfigured(env)) throw new Error("Meta belum dikonfigurasi. Isi Access Token dan Ad Account ID di halaman Pengaturan.");
+  
+  const fields = "id,name,effective_status,insights.date_preset(" + datePreset + "){spend,impressions,reach,actions,cost_per_action_type,purchase_roas,quality_ranking,conversion_rate_ranking}";
+  let url: string | null = `${GRAPH}/${account(env)}/ads?fields=${encodeURIComponent(fields)}&limit=100`;
+  const ads: any[] = [];
+  
+  for (let page = 0; url && page < 5 && ads.length < 500; page++) {
+    const j: any = await graph(env, url);
+    ads.push(...(j.data ?? []));
+    url = j.paging?.next ?? null;
+    if (url && !url.startsWith("https://graph.facebook.com/")) url = null;
+  }
+  
+  return ads.map(ad => {
+    const ins = ad.insights?.data?.[0] || {};
+    const spend = num(ins.spend) || 0;
+    const purchases = actionValue(ins.actions, PURCHASE) || 0;
+    const contacts = actionValue(ins.actions, LEAD) || 0;
+    
+    return {
+      "Ad name": ad.name || "Unknown Ad",
+      "Amount spent (IDR)": spend,
+      "Purchases": purchases,
+      "Cost per purchase (IDR)": actionValue(ins.cost_per_action_type, PURCHASE) || (purchases > 0 ? spend / purchases : 0),
+      "Purchase ROAS (return on ad spend)": actionValue(ins.purchase_roas, PURCHASE) || 0,
+      "Contacts": contacts,
+      "Cost per contact (IDR)": actionValue(ins.cost_per_action_type, LEAD) || (contacts > 0 ? spend / contacts : 0),
+      "Landing page views": actionValue(ins.actions, LPV) || 0,
+      "Adds to cart": actionValue(ins.actions, ATC) || 0,
+      "Impressions": num(ins.impressions) || 0,
+      "Reach": num(ins.reach) || 0,
+      "Quality ranking": ins.quality_ranking || "-",
+      "Conversion rate ranking": ins.conversion_rate_ranking || "-"
+    };
+  });
+}
+
 export async function syncMetaAds(env: Env): Promise<{ fetched: number; added: number; updated: number; skipped: number }> {
   if (!metaConfigured(env)) throw new Error("Meta belum dikonfigurasi (Pengaturan → Meta Ads).");
   const fields = "id,name,effective_status,campaign{name},insights.date_preset(this_month){spend,impressions,ctr,frequency,cost_per_action_type,purchase_roas}";

@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   RotateCcw,
   RefreshCw,
+  Activity
 } from "lucide-react";
 import Papa from "papaparse";
 import { Badge, Button, Card, PageHeader, SectionTitle, Spinner } from "../components/ui";
@@ -141,7 +142,7 @@ export function MetaAds() {
   const [sort, setSort] = useState<Sort>({ key: "Amount spent (IDR)", dir: -1 });
   const [open, setOpen] = useState<number | null>(null);
   const [rowAnalysis, setRowAnalysis] = useState<Record<number, string>>({});
-  const [busy, setBusy] = useState<number | "all" | null>(null);
+  const [busy, setBusy] = useState<number | "all" | "live" | null>(null);
 
   const [overall, setOverall] = useState<string>(() => {
     const saved = localStorage.getItem("meta_ads_custom_analysis");
@@ -214,6 +215,46 @@ export function MetaAds() {
       return (x > y ? 1 : x < y ? -1 : 0) * sort.dir;
     });
   }, [rows, sort, numeric]);
+
+  
+  async function fetchLive() {
+    setBusy("live");
+    setErr("");
+    try {
+      const res = await api<{ data: Row[] }>("/meta-ads/live?preset=maximum");
+      if (!res.data || res.data.length === 0) {
+        setErr("Tidak ada data iklan yang aktif/ditemukan dari Meta API.");
+        return;
+      }
+      setRows(res.data);
+      setFileName("Live Data (Meta API)");
+      setOverall("");
+      setRowAnalysis({});
+      setOpen(null);
+      
+      try {
+        localStorage.setItem("meta_ads_custom_rows", JSON.stringify(res.data));
+        localStorage.setItem("meta_ads_custom_filename", "Live Data (Meta API)");
+        localStorage.removeItem("meta_ads_custom_analysis");
+      } catch {}
+      
+      // Auto analyze after fetch
+      const r = await api<{ analysis: string }>("/meta-ads/analyze", {
+        method: "POST",
+        body: { data: res.data },
+      });
+      setOverall(r.analysis);
+      try {
+        localStorage.setItem("meta_ads_custom_analysis", r.analysis);
+      } catch {}
+      setActiveTab("analysis");
+      
+    } catch (e: any) {
+      setErr(e.message ?? "Gagal mengambil data live dari Meta. Pastikan Token Meta terisi di menu Sistem.");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   function loadFile(file: File) {
     setErr("");
@@ -309,9 +350,20 @@ export function MetaAds() {
           )}
         </div>
 
+        
         <div className="flex items-center gap-2">
           <Button
+            variant="secondary"
+            onClick={fetchLive}
+            disabled={busy !== null}
+            className="shadow-sm border-accent text-accent hover:bg-accent/10"
+          >
+            {busy === "live" ? <Spinner label="Menarik Data..." /> : <Activity className="size-4" />} Tarik Live (Meta API)
+          </Button>
+
+          <Button
             variant="primary"
+
             onClick={() => analyze("all")}
             disabled={busy !== null}
             className="shadow-sm"

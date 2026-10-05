@@ -95,6 +95,19 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
   const method = req.method;
 
   // Meta Ads Analytics
+  
+  if (path === "/meta-ads/live" && method === "GET") {
+    if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
+    const urlObj = new URL(req.url);
+    const preset = urlObj.searchParams.get("preset") || "last_7d";
+    try {
+      const data = await meta.getLiveDashboardData(env, preset);
+      return json({ data });
+    } catch (e: any) {
+      throw new HttpError(500, e.message);
+    }
+  }
+
   if (path === "/meta-ads/analyze" && method === "POST") {
     if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
     const { data, row } = await readJson(req);
