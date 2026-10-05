@@ -4,8 +4,8 @@ import { Loader2, X } from "lucide-react";
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-accent text-white shadow-md hover:shadow-lg hover:brightness-95 active:brightness-90",
-  secondary: "border border-line bg-surface text-fg shadow-sm hover:shadow-md hover:border-accent/60",
+  primary: "bg-accent text-white shadow-sm hover:brightness-95 active:brightness-90",
+  secondary: "border border-line bg-surface-2 text-fg hover:bg-accent-soft hover:text-accent",
   ghost: "text-muted hover:bg-surface-2 hover:text-fg transition-colors",
   danger: "border border-line bg-surface text-danger shadow-sm hover:bg-danger-soft",
 };
@@ -23,7 +23,7 @@ export function Button({
     <button
       {...props}
       disabled={props.disabled || loading}
-      className={`inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${sizing} ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-xl font-medium transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${sizing} ${VARIANTS[variant]} ${className}`}
     >
       {loading && <Loader2 className="size-4 animate-spin" />}
       {children}
@@ -32,7 +32,7 @@ export function Button({
 }
 
 export function Card({ className = "", children }: { className?: string; children: ReactNode }) {
-  return <div className={`rounded-xl border border-line bg-surface shadow-[var(--shadow-card)] ${className}`}>{children}</div>;
+  return <div className={`rounded-2xl border border-line bg-surface shadow-[var(--shadow-card)] ${className}`}>{children}</div>;
 }
 
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {

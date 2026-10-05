@@ -3,19 +3,20 @@
 :root {
   --bg: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f8fafc;
-  --fg: #0f172a;
+  --surface-2: #f1f5f9;
+  --fg: #1e293b;
   --muted: #64748b;
   --line: #e2e8f0;
-  --accent: #4338ca;
-  --accent-soft: #eef2ff;
+  --accent: #6366f1;
+  --accent-soft: #eef0ff;
   --accent-fg: #ffffff;
-  --danger: #dc2626;
-  --danger-soft: #fee2e2;
+  --danger: #e11d48;
+  --danger-soft: #ffe4e9;
   --warn: #d97706;
   --warn-soft: #fef3c7;
-  --ok: #16a34a;
-  --ok-soft: #dcfce7;
+  --ok: #059669;
+  --ok-soft: #d1fae5;
+  --shadow-card: 0 4px 20px rgb(0 0 0 / 0.04);
   color-scheme: light;
 }
 
@@ -23,19 +24,20 @@
   :root {
     --bg: #0f172a;
     --surface: #1e293b;
-    --surface-2: #334155;
+    --surface-2: #273449;
     --fg: #f1f5f9;
     --muted: #94a3b8;
-    --line: #475569;
-    --accent: #a78bfa;
-    --accent-soft: #312e81;
-    --accent-fg: #f1f5f9;
-    --danger: #fca5a5;
-    --danger-soft: #7f1d1d;
-    --warn: #fcd34d;
-    --warn-soft: #78350f;
-    --ok: #86efac;
-    --ok-soft: #1b4332;
+    --line: #334155;
+    --accent: #818cf8;
+    --accent-soft: #2b2f66;
+    --accent-fg: #0f172a;
+    --danger: #fb7185;
+    --danger-soft: #4c1d2b;
+    --warn: #fbbf24;
+    --warn-soft: #422e0c;
+    --ok: #34d399;
+    --ok-soft: #0f3a2d;
+    --shadow-card: 0 4px 20px rgb(0 0 0 / 0.25);
     color-scheme: dark;
   }
 }
@@ -56,8 +58,9 @@
   --color-warn-soft: var(--warn-soft);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "DM Sans", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", "DM Sans", ui-sans-serif, sans-serif;
 }
 
 body {
@@ -109,3 +112,5 @@ button:disabled { cursor: not-allowed; }
 
 /* Scrollbar tipis agar tabel data tidak berat. */
 * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+
+h1, h2, h3 { font-family: var(--font-display); }
