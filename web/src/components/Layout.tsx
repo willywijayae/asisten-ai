@@ -98,8 +98,7 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
               to={item.path}
               aria-current={active(item.path) ? "page" : undefined}
               className={`relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors duration-150 max-md:py-3 ${
-                active(item.path)
-                  ? "bg-accent-soft font-semibold text-accent before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-accent"
+                active(item.path) ? "font-semibold text-accent"
                   : "text-muted hover:bg-surface-2 hover:text-fg"
               }`}
             >
