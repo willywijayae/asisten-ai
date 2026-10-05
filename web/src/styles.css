@@ -1,43 +1,41 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #f4f7fb;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --surface-2: #eaf0f8;
-  --fg: #0f1d3a;
-  --muted: #4b5a73;
-  --line: #d8e1ee;
-  --accent: #1e40af;
-  --accent-soft: #e3ebfd;
+  --surface-2: #f8fafc;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --accent: #4338ca;
+  --accent-soft: #eef2ff;
   --accent-fg: #ffffff;
-  --danger: #c62a1f;
-  --danger-soft: #fdeceb;
-  --warn: #a14b08;
-  --warn-soft: #fdf1dc;
-  --ok: #15803d;
-  --ok-soft: #e4f5ea;
-  --shadow-card: 0 1px 2px rgb(15 29 58 / 0.04), 0 1px 3px rgb(15 29 58 / 0.05);
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --warn: #d97706;
+  --warn-soft: #fef3c7;
+  --ok: #16a34a;
+  --ok-soft: #dcfce7;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0a1020;
-    --surface: #111a2e;
-    --surface-2: #19243c;
-    --fg: #e8edf8;
-    --muted: #9aa8c2;
-    --line: #25314d;
-    --accent: #6ea8ff;
-    --accent-soft: #162a55;
-    --accent-fg: #07122b;
-    --danger: #ff7b72;
-    --danger-soft: #3a1a1c;
-    --warn: #fbbf24;
-    --warn-soft: #362a12;
-    --ok: #4ade80;
-    --ok-soft: #13301f;
-    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface-2: #334155;
+    --fg: #f1f5f9;
+    --muted: #94a3b8;
+    --line: #475569;
+    --accent: #a78bfa;
+    --accent-soft: #312e81;
+    --accent-fg: #f1f5f9;
+    --danger: #fca5a5;
+    --danger-soft: #7f1d1d;
+    --warn: #fcd34d;
+    --warn-soft: #78350f;
+    --ok: #86efac;
+    --ok-soft: #1b4332;
     color-scheme: dark;
   }
 }
@@ -58,8 +56,8 @@
   --color-warn-soft: var(--warn-soft);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
-  --font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-sans: "Fira Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 body {

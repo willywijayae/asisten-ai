@@ -63,9 +63,9 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
 
   return (
     <div className="min-h-dvh md:flex">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-line bg-surface px-3 py-5 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 bg-white shrink-0 flex-col overflow-y-auto border-r border-line bg-surface-2 px-3 py-5 md:flex">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-accent-fg shadow-sm">
+          <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-white shadow-md">
             <Brain className="size-4.5" />
           </div>
           <div className="leading-tight">
