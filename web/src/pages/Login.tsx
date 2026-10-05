@@ -43,7 +43,7 @@ export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
     <div className="flex min-h-dvh items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-fg">
+          <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-slate-600 text-white">
             <Brain className="size-6" />
           </div>
           <h1 className="text-xl font-semibold">Second Brain</h1>

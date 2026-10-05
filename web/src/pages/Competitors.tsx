@@ -516,7 +516,7 @@ export function Competitors() {
             key={key}
             onClick={() => setTab(key)}
             className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm transition sm:flex-none ${
-              tab === key ? "bg-accent text-accent-fg" : "text-muted hover:bg-surface-2"
+              tab === key ? "bg-slate-600 text-white" : "text-muted hover:bg-surface-2"
             }`}
           >
             <Icon className="size-4" /> {label}
@@ -689,7 +689,7 @@ function Gallery({ sum, reloadSum }: { sum: Summary; reloadSum: () => void }) {
                       <span className="tabular-nums text-muted">{a.n}</span>
                     </div>
                     <div className="h-1.5 rounded-full bg-surface-2">
-                      <div className="h-full rounded-full bg-accent" style={{ width: `${(a.n / sum.angles[0].n) * 100}%` }} />
+                      <div className="h-full rounded-full bg-slate-700" style={{ width: `${(a.n / sum.angles[0].n) * 100}%` }} />
                     </div>
                   </div>
                 ))}
@@ -743,7 +743,7 @@ function ScanHelp({ lastScan }: { lastScan?: Summary["scans"][number] }) {
                 e.preventDefault();
                 toast.ok("Seret tombol ini ke bookmark bar, jangan diklik di sini");
               }}
-              className="mt-2 inline-flex cursor-grab items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg"
+              className="mt-2 inline-flex cursor-grab items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white"
             >
               <Megaphone className="size-3.5" /> Kirim ke Second Brain
             </a>

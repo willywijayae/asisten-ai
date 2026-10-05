@@ -187,7 +187,7 @@ function ProjectList() {
                   </p>
                   <div className="mt-3 flex gap-1">
                     {STEPS.map((s, i) => (
-                      <span key={s.key} className={`h-1.5 flex-1 rounded-full ${i < done ? "bg-ok" : i === done ? "bg-accent" : "bg-surface-2"}`} />
+                      <span key={s.key} className={`h-1.5 flex-1 rounded-full ${i < done ? "bg-ok" : i === done ? "bg-slate-700" : "bg-surface-2"}`} />
                     ))}
                   </div>
                   <p className="mt-2 text-xs">
@@ -722,7 +722,7 @@ function StoryboardStep({ p, onGenerate, onSave }: { p: Project; onGenerate: (o:
             {sb.scenes.map((s, i) => (
               <Card key={i} className={`p-3 ${Number(s.seconds) > limit ? "border-danger" : ""}`}>
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="flex size-7 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-fg">{i + 1}</span>
+                  <span className="flex size-7 items-center justify-center rounded-full bg-slate-700 text-xs font-bold text-white">{i + 1}</span>
                   <input
                     id={`sb-sec-${i}`}
                     type="number"
@@ -863,7 +863,7 @@ function ResultStep({ p, reload }: { p: Project; reload: () => void }) {
             <button
               key={pv}
               onClick={() => switchProvider(pv)}
-              className={`rounded-md px-3 py-1.5 text-sm ${provider === pv ? "bg-accent text-accent-fg" : "text-muted hover:bg-surface-2"}`}
+              className={`rounded-md px-3 py-1.5 text-sm ${provider === pv ? "bg-slate-600 text-white" : "text-muted hover:bg-surface-2"}`}
             >
               {PROVIDER_NAME[pv]}
             </button>

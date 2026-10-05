@@ -355,7 +355,7 @@ function Dashboard({ product, taxonomy }: Ctx) {
                     {cols.map((a) => {
                       const n = cell(p.id, a);
                       const s = n ? 10 + Math.round((22 * n) / max) : 0;
-                      return <td key={a} className="p-2 text-center">{n ? <span title={`${n} iklan aktif`} className="inline-flex items-center justify-center rounded-full bg-accent text-[10px] text-accent-fg" style={{ width: s, height: s }}>{n}</span> : <span className="text-muted">·</span>}</td>;
+                      return <td key={a} className="p-2 text-center">{n ? <span title={`${n} iklan aktif`} className="inline-flex items-center justify-center rounded-full bg-slate-700 text-[10px] text-white" style={{ width: s, height: s }}>{n}</span> : <span className="text-muted">·</span>}</td>;
                     })}
                   </tr>
                 ))}

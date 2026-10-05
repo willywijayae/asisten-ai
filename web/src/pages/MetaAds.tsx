@@ -365,7 +365,7 @@ export function MetaAds() {
             variant="secondary"
             onClick={fetchLive}
             disabled={busy !== null}
-            className="shadow-sm border-accent text-accent hover:bg-accent/10"
+            className="shadow-sm border-accent text-accent hover:bg-slate-700/10"
           >
             {busy === "live" ? <Spinner label="Menarik Data..." /> : <Activity className="size-4" />} Tarik Live (Meta API)
           </Button>

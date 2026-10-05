@@ -125,7 +125,7 @@ export function Chat({ onChanged }: { onChanged: () => void }) {
                   <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div
                       className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm ${
-                        m.role === "user" ? "rounded-br-md bg-accent text-accent-fg" : "rounded-bl-md bg-surface-2 text-fg"
+                        m.role === "user" ? "rounded-br-md bg-slate-600 text-white" : "rounded-bl-md bg-surface-2 text-fg"
                       }`}
                     >
                       <p className="whitespace-pre-wrap break-words">{m.content}</p>

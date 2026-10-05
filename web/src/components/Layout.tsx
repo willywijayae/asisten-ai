@@ -77,7 +77,7 @@ export function Layout({ children, badges }: { children: ReactNode; badges?: Rec
 
   const brand = (
     <div className="flex items-center gap-2 px-2">
-      <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-white shadow-md">
+      <div className="flex size-9 items-center justify-center rounded-xl bg-slate-700 text-white shadow-md">
         <Brain className="size-4.5" />
       </div>
       <div className="leading-tight">

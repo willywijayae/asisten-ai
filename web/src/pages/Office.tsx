@@ -231,7 +231,7 @@ export function Office({ onChanged }: { onChanged: () => void }) {
               <button
                 type="submit"
                 disabled={sending || !command.trim()}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-fg transition disabled:opacity-40"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-600 text-white transition disabled:opacity-40"
                 aria-label="Kirim perintah"
               >
                 <ArrowUp className={`size-4 ${sending ? "animate-bounce" : ""}`} />
