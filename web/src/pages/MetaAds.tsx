@@ -7,7 +7,17 @@ import {
   AlertTriangle,
   RotateCcw,
   RefreshCw,
-  Activity
+  Activity,
+  Infinity as InfinityIcon,
+  Calendar,
+  Eye,
+  Users,
+  Repeat,
+  Wallet,
+  ShoppingBag,
+  Target,
+  TrendingUp,
+  MessageCircle,
 } from "lucide-react";
 import Papa from "papaparse";
 import { Badge, Button, Card, PageHeader, SectionTitle, Spinner } from "../components/ui";
@@ -123,6 +133,56 @@ function decide(row: Row) {
   };
 }
 
+const PALETTE = ["#4338ca", "#0e7490", "#c2410c", "#7e22ce", "#15803d", "#be123c", "#1d4ed8", "#a16207"];
+
+function Tile({ label, value, sub, icon: Icon, color }: { label: string; value: string; sub?: string; icon: typeof Eye; color: string }) {
+  return (
+    <div className="flex min-h-[104px] flex-col justify-between rounded-2xl p-4 text-white" style={{ background: color }}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-xs font-medium text-white/90">{label}</span>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-black/20">
+          <Icon className="size-4" />
+        </span>
+      </div>
+      <div>
+        <p className="text-2xl font-bold leading-tight tabular-nums">{value}</p>
+        {sub && <p className="mt-0.5 text-[11px] text-white/90">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+function Donut({ items }: { items: { label: string; value: number; color: string }[] }) {
+  const total = items.reduce((a, i) => a + i.value, 0) || 1;
+  const R = 15.9155;
+  let acc = 0;
+  return (
+    <div className="flex flex-wrap items-center gap-6">
+      <svg viewBox="0 0 42 42" className="size-40 shrink-0 -rotate-90" role="img" aria-label="Porsi spend per iklan">
+        <circle cx="21" cy="21" r={R} fill="none" stroke="#eef0fb" strokeWidth="6" />
+        {items.map((i) => {
+          const pct = (i.value / total) * 100;
+          const el = (
+            <circle key={i.label} cx="21" cy="21" r={R} fill="none" stroke={i.color} strokeWidth="6"
+              strokeDasharray={`${pct} ${100 - pct}`} strokeDashoffset={-acc} />
+          );
+          acc += pct;
+          return el;
+        })}
+      </svg>
+      <ul className="min-w-[180px] flex-1 space-y-1.5 text-sm">
+        {items.map((i) => (
+          <li key={i.label} className="flex items-center gap-2">
+            <span className="size-2.5 shrink-0 rounded-full" style={{ background: i.color }} />
+            <span className="flex-1 truncate">{i.label}</span>
+            <span className="tabular-nums text-muted">{((i.value / total) * 100).toFixed(1)}%</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function MetaAds() {
   const [rows, setRows] = useState<Row[]>(() => {
     try {
@@ -209,6 +269,25 @@ export function MetaAds() {
       closingRate,
     };
   }, [rows]);
+
+  const frequency = summary.reach > 0 ? summary.impressions / summary.reach : 0;
+  const best = useMemo(() => {
+    let b: { name: string; roas: number } | null = null;
+    for (const r of rows) {
+      const v = num(r["Purchase ROAS (return on ad spend)"]);
+      if (Number.isFinite(v) && (!b || v > b.roas)) b = { name: r["Ad name"] || "-", roas: v };
+    }
+    return b;
+  }, [rows]);
+  const perAd = useMemo(() => {
+    const list = rows.map((r) => ({
+      name: r["Ad name"] || "-",
+      spend: num(r["Amount spent (IDR)"]) || 0,
+      roas: num(r["Purchase ROAS (return on ad spend)"]),
+    }));
+    return list.sort((a, b) => b.spend - a.spend).map((a, i) => ({ ...a, color: PALETTE[i % PALETTE.length] }));
+  }, [rows]);
+  const maxSpend = Math.max(1, ...perAd.map((a) => a.spend));
 
   const sorted = useMemo(() => {
     const idx = rows.map((r, i) => ({ r, i }));
@@ -332,156 +411,112 @@ export function MetaAds() {
         subtitle="Analisa Performa Iklan SVO BISNISHACK & Rekomendasi Tindakan Claude Opus"
       />
 
-      {/* Control Bar */}
-      <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+      {/* Header bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3 shadow-[var(--shadow-card)]">
+        <div className="flex items-center gap-2.5 px-1">
+          <InfinityIcon className="size-7 text-blue-600" aria-hidden />
+          <span className="text-lg font-bold">Overview</span>
+          <span className="hidden rounded-full bg-[#eef0fb] px-2.5 py-1 text-xs text-muted sm:inline">{fileName} · {rows.length} iklan</span>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm font-medium hover:bg-surface transition">
-            <Upload className="size-4 text-accent" /> Upload CSV Lain
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && loadFile(e.target.files[0])}
-            />
+          <label className="inline-flex items-center gap-2 rounded-full bg-[#eef0fb] px-3 py-1.5 text-sm">
+            <Calendar className="size-4 text-muted" aria-hidden />
+            <input type="date" value={since} max={until} aria-label="Dari tanggal" onChange={(e) => setSince(e.target.value)} className="bg-transparent text-sm" />
+            <span className="text-xs text-muted">s/d</span>
+            <input type="date" value={until} min={since} max={todayStr} aria-label="Sampai tanggal" onChange={(e) => setUntil(e.target.value)} className="bg-transparent text-sm" />
           </label>
-          <Badge tone="accent">
-            📁 {fileName} ({rows.length} iklan)
-          </Badge>
+          <Button variant="secondary" onClick={fetchLive} disabled={busy !== null} className="rounded-full">
+            {busy === "live" ? <Spinner label="Menarik Data..." /> : <Activity className="size-4" />} Tarik Live
+          </Button>
+          <Button variant="primary" onClick={() => analyze("all")} disabled={busy !== null} className="rounded-full">
+            {busy === "all" ? <Spinner label="Opus Sedang Menganalisa..." /> : <Sparkles className="size-4" />} Analisa Opus
+          </Button>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-sm font-medium hover:border-accent/40">
+            <Upload className="size-4" aria-hidden /> CSV
+            <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && loadFile(e.target.files[0])} />
+          </label>
           {fileName !== "SVO-BISNISHACK---01-Ads-1-Oct-2026-4-Oct-2026.csv" && (
             <Button size="sm" variant="ghost" onClick={resetToDefault}>
-              <RotateCcw className="size-3.5" /> Kembali ke Data SVO
+              <RotateCcw className="size-3.5" /> Data SVO
             </Button>
           )}
         </div>
-
-        
-        <div className="flex flex-wrap items-center gap-2">
-          <input type="date" value={since} max={until} onChange={(e) => setSince(e.target.value)}
-            className="rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-sm" />
-          <span className="text-xs text-muted">s/d</span>
-          <input type="date" value={until} min={since} max={todayStr} onChange={(e) => setUntil(e.target.value)}
-            className="rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-sm" />
-          <Button
-            variant="secondary"
-            onClick={fetchLive}
-            disabled={busy !== null}
-            className="shadow-sm border-accent text-accent hover:bg-slate-700/10"
-          >
-            {busy === "live" ? <Spinner label="Menarik Data..." /> : <Activity className="size-4" />} Tarik Live (Meta API)
-          </Button>
-
-          <Button
-            variant="primary"
-
-            onClick={() => analyze("all")}
-            disabled={busy !== null}
-            className="shadow-sm"
-          >
-            {busy === "all" ? <Spinner label="Opus Sedang Menganalisa..." /> : <Sparkles className="size-4" />} Analisa Ulang (Claude Opus)
-          </Button>
-        </div>
-      </Card>
+      </div>
 
       {err && (
-        <Card className="border-danger/30 bg-danger-soft p-3 text-sm text-danger flex items-center gap-2">
+        <Card className="flex items-center gap-2 border-danger/30 bg-danger-soft p-3 text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           <span>{err}</span>
         </Card>
       )}
 
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Card className="p-3.5 border-l-4 border-l-accent">
-          <p className="text-xs font-medium text-muted">Total Spend</p>
-          <p className="mt-1 text-lg font-bold text-fg">{rupiah(summary.spend)}</p>
-          <p className="text-[11px] text-muted">4 hari kampanye</p>
+      {/* Dua kelompok tile berwarna */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="p-4">
+          <SectionTitle>Jangkauan & Biaya</SectionTitle>
+          <div className="grid grid-cols-2 gap-3">
+            <Tile label="Amount Spent" value={rupiah(summary.spend)} sub={`${rows.length} iklan`} icon={Wallet} color="#15803d" />
+            <Tile label="Impressions" value={compact(summary.impressions)} icon={Eye} color="#1d4ed8" />
+            <Tile label="Reach" value={compact(summary.reach)} icon={Users} color="#0e7490" />
+            <Tile label="Frequency" value={`${frequency.toFixed(2)}x`} sub="impressions / reach" icon={Repeat} color="#7e22ce" />
+          </div>
         </Card>
-
-        <Card className="p-3.5 border-l-4 border-l-ok">
-          <p className="text-xs font-medium text-muted">Purchases & CPA</p>
-          <p className="mt-1 text-lg font-bold text-fg">
-            {summary.purchases} <span className="text-xs font-normal text-muted">sales</span>
-          </p>
-          <p className="text-[11px] text-ok font-medium">CPA {rupiah(summary.cpa)}</p>
-        </Card>
-
-        <Card className="p-3.5 border-l-4 border-l-warn">
-          <p className="text-xs font-medium text-muted">ROAS Tertimbang</p>
-          <p className="mt-1 text-lg font-bold text-fg">{summary.roas.toFixed(2)}x</p>
-          <p className="text-[11px] text-muted">Winner Ads06: 5.41x</p>
-        </Card>
-
-        <Card className="p-3.5 border-l-4 border-l-accent">
-          <p className="text-xs font-medium text-muted">Contacts & Lead Cost</p>
-          <p className="mt-1 text-lg font-bold text-fg">
-            {summary.contacts} <span className="text-xs font-normal text-muted">kontak</span>
-          </p>
-          <p className="text-[11px] text-muted">{rupiah(summary.costPerContact)} / kontak</p>
-        </Card>
-
-        <Card className="p-3.5 border-l-4 border-l-danger">
-          <p className="text-xs font-medium text-muted">Closing Rate</p>
-          <p className="mt-1 text-lg font-bold text-danger">{summary.closingRate.toFixed(1)}%</p>
-          <p className="text-[11px] text-danger font-medium">⚠️ Bottleneck kontak→beli</p>
-        </Card>
-
-        <Card className="p-3.5">
-          <p className="text-xs font-medium text-muted">Reach & Impressions</p>
-          <p className="mt-1 text-lg font-bold text-fg">
-            {compact(summary.reach)} <span className="text-xs font-normal text-muted">reach</span>
-          </p>
-          <p className="text-[11px] text-muted">{compact(summary.impressions)} imps (Freq 1.26x)</p>
+        <Card className="p-4">
+          <SectionTitle>Konversi</SectionTitle>
+          <div className="grid grid-cols-2 gap-3">
+            <Tile label="Purchases" value={String(summary.purchases)} sub={`CPA ${rupiah(summary.cpa)}`} icon={ShoppingBag} color="#c2410c" />
+            <Tile label="ROAS Tertimbang" value={`${summary.roas.toFixed(2)}x`} sub={best ? `Terbaik ${best.name}: ${best.roas.toFixed(2)}x` : undefined} icon={TrendingUp} color="#4338ca" />
+            <Tile label="Contacts" value={String(summary.contacts)} sub={`${rupiah(summary.costPerContact)} / kontak`} icon={MessageCircle} color="#0f766e" />
+            <Tile label="Closing Rate" value={`${summary.closingRate.toFixed(1)}%`} sub="kontak → beli" icon={Target} color="#be123c" />
+          </div>
         </Card>
       </div>
 
-      {/* Funnel Progress Overview Bar */}
+      {/* Funnel dengan bar */}
       <Card className="p-4">
-        <SectionTitle>
-          <span>Funnel Konversi Keseluruhan (Agregat)</span>
-        </SectionTitle>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
-          <div className="rounded-lg bg-surface-2 p-3">
-            <span className="text-xs text-muted">1. Landing Page Views</span>
-            <div className="mt-1 flex items-baseline justify-between">
-              <span className="text-base font-semibold">{summary.lpv}</span>
-              <span className="text-xs text-muted">Traffic masuk</span>
+        <SectionTitle>Funnel Konversi (Agregat)</SectionTitle>
+        <div className="space-y-2.5">
+          {[
+            { l: "Landing Page Views", v: summary.lpv, note: "traffic masuk", c: "#1d4ed8" },
+            { l: "Adds to Cart", v: summary.atc, note: `${summary.atcRate.toFixed(1)}% dari LPV`, c: "#0e7490" },
+            { l: "Contacts", v: summary.contacts, note: `${summary.contactRate.toFixed(1)}% dari ATC`, c: "#7e22ce" },
+            { l: "Purchases", v: summary.purchases, note: `${summary.closingRate.toFixed(1)}% closing`, c: "#c2410c" },
+          ].map((f) => (
+            <div key={f.l} className="grid grid-cols-[130px_1fr_auto] items-center gap-3 text-sm max-sm:grid-cols-1 max-sm:gap-1">
+              <span className="text-muted">{f.l}</span>
+              <div className="h-6 overflow-hidden rounded-full bg-[#eef0fb]">
+                <div className="h-full rounded-full" style={{ width: `${Math.max(2, (f.v / Math.max(summary.lpv, 1)) * 100)}%`, background: f.c }} />
+              </div>
+              <span className="whitespace-nowrap tabular-nums"><b>{new Intl.NumberFormat("id-ID").format(f.v)}</b> <span className="text-xs text-muted">· {f.note}</span></span>
             </div>
-          </div>
-
-          <div className="rounded-lg bg-surface-2 p-3">
-            <div className="flex items-center justify-between text-xs text-muted">
-              <span>2. Adds to Cart</span>
-              <span className="font-semibold text-accent">{summary.atcRate.toFixed(1)}% LPV</span>
-            </div>
-            <div className="mt-1 flex items-baseline justify-between">
-              <span className="text-base font-semibold">{summary.atc}</span>
-              <span className="text-xs text-muted">Keranjang</span>
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-surface-2 p-3">
-            <div className="flex items-center justify-between text-xs text-muted">
-              <span>3. Contacts (WA/Lead)</span>
-              <span className="font-semibold text-accent">{summary.contactRate.toFixed(1)}% ATC</span>
-            </div>
-            <div className="mt-1 flex items-baseline justify-between">
-              <span className="text-base font-semibold">{summary.contacts}</span>
-              <span className="text-xs text-muted">Chat Masuk</span>
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-surface-2 p-3 border border-danger/30">
-            <div className="flex items-center justify-between text-xs text-danger font-medium">
-              <span>4. Purchases</span>
-              <span>{summary.closingRate.toFixed(1)}% Close</span>
-            </div>
-            <div className="mt-1 flex items-baseline justify-between">
-              <span className="text-base font-semibold text-ok">{summary.purchases}</span>
-              <span className="text-xs text-muted">Rp 524rb CPA</span>
-            </div>
-          </div>
+          ))}
         </div>
       </Card>
+
+      {/* Grafik per iklan */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="p-4">
+          <SectionTitle>Spend per Iklan</SectionTitle>
+          <div className="space-y-2">
+            {perAd.map((a) => (
+              <div key={a.name} className="grid grid-cols-[88px_1fr_auto] items-center gap-3 text-sm">
+                <span className="truncate" title={a.name}>{a.name}</span>
+                <div className="h-4 overflow-hidden rounded-full bg-[#eef0fb]">
+                  <div className="h-full rounded-full" style={{ width: `${(a.spend / maxSpend) * 100}%`, background: a.color }} />
+                </div>
+                <span className="whitespace-nowrap text-xs tabular-nums text-muted">
+                  {rupiah(a.spend)} · <b className={Number.isFinite(a.roas) && a.roas >= 2 ? "text-ok" : Number.isFinite(a.roas) && a.roas < 1 ? "text-danger" : "text-fg"}>{Number.isFinite(a.roas) ? `${a.roas.toFixed(2)}x` : "-"}</b>
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-muted">Angka kanan: spend · ROAS.</p>
+        </Card>
+        <Card className="p-4">
+          <SectionTitle>Porsi Spend</SectionTitle>
+          <Donut items={perAd.filter((a) => a.spend > 0).map((a) => ({ label: a.name, value: a.spend, color: a.color }))} />
+        </Card>
+      </div>
 
       {/* Tabs Navigation */}
       <div className="flex border-b border-line gap-4 text-sm font-medium">
