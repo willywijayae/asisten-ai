@@ -225,7 +225,7 @@ export async function lastSync(env: Env): Promise<Record<string, unknown> | null
 
 import { complete } from "./agent";
 
-const SYS = "Kamu Analis Iklan senior (Performance Marketing) untuk e-commerce Indonesia. Jawab dalam Bahasa Indonesia, lugas, pakai angka aktual dari data, jangan mengarang metrik. Format markdown ringkas dan action-oriented.";
+const SYS = "Kamu Analis Iklan senior (Performance Marketing) untuk e-commerce Indonesia. Jawab dalam Bahasa Indonesia, lugas, pakai angka aktual dari data, jangan mengarang metrik. Tulis seperti catatan rapi untuk pemilik bisnis awam: kalimat pendek, judul bagian, daftar singkat. Hindari simbol berlebihan, kode, dan tabel panjang.";
 
 function adCsvSummary(data: any[]): string {
   const rows = data.map((r) => ({

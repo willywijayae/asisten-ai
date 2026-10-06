@@ -22,6 +22,7 @@ import {
 import Papa from "papaparse";
 import { Badge, Button, Card, PageHeader, SectionTitle, Spinner } from "../components/ui";
 import { api } from "../lib/api";
+import { ReadableText } from "./ReadableText";
 import { ID_MAP } from "./idMap";
 import { DEFAULT_ANALYSIS, DEFAULT_ROWS } from "./metaAdsDefaultData";
 
@@ -887,9 +888,7 @@ export function MetaAds() {
                                   <Sparkles className="size-4" />
                                   <span>Analisa & Rekomendasi Opus untuk {r["Ad name"]}:</span>
                                 </div>
-                                <div className="whitespace-pre-wrap text-fg text-xs sm:text-sm">
-                                  {rowAnalysis[i]}
-                                </div>
+                                <ReadableText text={rowAnalysis[i]} />
                               </div>
                             )}
                           </td>
@@ -931,8 +930,8 @@ export function MetaAds() {
           </div>
 
           {/* Formatted Markdown Box */}
-          <div className="text-fg leading-relaxed whitespace-pre-wrap rounded-lg bg-surface-2/60 p-4 sm:p-6 text-xs sm:text-sm border border-line font-sans">
-            {overall}
+          <div className="rounded-2xl border border-line p-4 sm:p-6">
+            <ReadableText text={overall} />
           </div>
         </Card>
       )}
