@@ -134,6 +134,17 @@ function decide(row: Row) {
   };
 }
 
+// Kolom yang diberi bar horizontal (gaya tabel referensi); warna bar per kolom.
+const BAR_COLS: Record<string, string> = {
+  "Amount spent (IDR)": "#3F9B5F",
+  "Purchases": "#c2410c",
+  "Contacts": "#7e22ce",
+  "Landing page views": "#1d4ed8",
+  "Adds to cart": "#0e7490",
+  "Impressions": "#3B6FE0",
+  "Reach": "#54C4BE",
+};
+
 const PALETTE = ["#4338ca", "#0e7490", "#c2410c", "#7e22ce", "#15803d", "#be123c", "#1d4ed8", "#a16207"];
 
 function Tile({ label, value, sub, icon: Icon, color }: { label: string; value: string; sub?: string; icon: typeof Eye; color: string }) {
@@ -331,6 +342,12 @@ export function MetaAds() {
       ),
     );
   }, [headers, rows]);
+
+  const colMax = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const h of Object.keys(BAR_COLS)) m[h] = Math.max(0, ...rows.map((r) => num(r[h]) || 0));
+    return m;
+  }, [rows]);
 
   const summary = useMemo(() => {
     const spend = rows.reduce((a, r) => a + (num(r["Amount spent (IDR)"]) || 0), 0);
@@ -686,16 +703,16 @@ export function MetaAds() {
             </span>
           </div>
 
-          <Card className="overflow-x-auto p-0">
+          <Card className="overflow-x-auto rounded-3xl p-3 sm:p-5">
             <table className="w-full whitespace-nowrap text-left text-sm">
-              <thead className="border-b border-line bg-surface-2 text-muted">
+              <thead className="text-fg">
                 <tr>
-                  <th className="p-3 w-10">Breakdown</th>
-                  <th className="p-3 font-semibold text-fg">Rekomendasi Tindakan</th>
+                  <th className="px-3 pb-3 pt-1 w-10 text-sm font-semibold">Rincian</th>
+                  <th className="px-3 pb-3 pt-1 text-sm font-semibold">Rekomendasi</th>
                   {viewColumns.map((h) => (
                     <th
                       key={h}
-                      className="cursor-pointer select-none p-3 font-medium hover:text-fg transition"
+                      className="cursor-pointer select-none px-3 pb-3 pt-1 text-sm font-semibold transition hover:text-accent"
                       onClick={() =>
                         setSort((s) => ({
                           key: h,
@@ -713,7 +730,7 @@ export function MetaAds() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-line">
+              <tbody>
                 {sorted.map(({ r, i }) => {
                   const verdict = decide(r);
                   const isExpanded = open === i;
@@ -725,7 +742,7 @@ export function MetaAds() {
 
                   return (
                     <Fragment key={i}>
-                      <tr className={`hover:bg-surface-2/60 transition ${isExpanded ? "bg-surface-2/50" : ""}`}>
+                      <tr className={`transition hover:bg-surface-2/60 ${isExpanded ? "bg-surface-2/50" : ""}`}>
                         <td className="p-3">
                           <Button
                             size="sm"
@@ -757,9 +774,9 @@ export function MetaAds() {
                           return (
                             <td
                               key={h}
-                              className={`max-w-[260px] truncate p-3 ${
-                                numeric.has(h) ? "text-right tabular-nums" : ""
-                              } ${isBold ? "font-semibold text-fg" : "text-fg/80"}`}
+                              className={`px-3 py-2.5 ${h === "Ad name" ? "max-w-[260px] whitespace-normal break-words" : "max-w-[260px] truncate"} ${
+                                numeric.has(h) ? "tabular-nums" : ""
+                              } ${isBold ? "font-semibold text-fg" : "text-fg"}`}
                             >
                               {isRoas && Number.isFinite(roasVal) ? (
                                 <span
@@ -773,6 +790,13 @@ export function MetaAds() {
                                 >
                                   {fmt(h, r[h])}
                                 </span>
+                              ) : BAR_COLS[h] && Number.isFinite(num(r[h])) ? (
+                                <div className="flex min-w-[140px] items-center gap-2">
+                                  <span className="w-20 shrink-0 text-right">{fmt(h, r[h])}</span>
+                                  <span className="h-2.5 flex-1">
+                                    <span className="block h-full" style={{ width: `${Math.max(2, ((num(r[h]) || 0) / (colMax[h] || 1)) * 100)}%`, background: BAR_COLS[h] }} />
+                                  </span>
+                                </div>
                               ) : (
                                 fmt(h, r[h])
                               )}
