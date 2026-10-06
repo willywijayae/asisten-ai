@@ -68,15 +68,98 @@ export function mapAd(ad: any): Record<string, unknown> {
 const LPV = ["landing_page_view"];
 const ATC = ["add_to_cart", "offsite_conversion.fb_pixel_add_to_cart"];
 
-export async function getLiveDashboardData(env: Env, datePreset: string = "maximum", since?: string, until?: string): Promise<any[]> {
-  if (!metaConfigured(env)) throw new Error("Meta belum dikonfigurasi. Isi Access Token dan Ad Account ID di halaman Pengaturan.");
-  
-  let timeParam = "";
+function timeQuery(datePreset: string, since?: string, until?: string): string {
   if (since && until) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) throw new Error("Format tanggal harus YYYY-MM-DD.");
     if (since > until) throw new Error("Tanggal mulai tidak boleh setelah tanggal akhir.");
+    return `time_range=${encodeURIComponent(JSON.stringify({ since, until }))}`;
+  }
+  if (!/^[a-z_0-9]+$/.test(datePreset)) throw new Error("date_preset tidak valid.");
+  return `date_preset=${datePreset}`;
+}
+
+async function insightsAll(env: Env, qs: string): Promise<any[]> {
+  if (!metaConfigured(env)) throw new Error("Meta belum dikonfigurasi. Isi Access Token dan Ad Account ID di halaman Pengaturan.");
+  let url: string | null = `${GRAPH}/${account(env)}/insights?${qs}&limit=200`;
+  const rows: any[] = [];
+  for (let page = 0; url && page < 5; page++) {
+    const j: any = await graph(env, url);
+    rows.push(...(j.data ?? []));
+    url = j.paging?.next ?? null;
+    if (url && !url.startsWith("https://graph.facebook.com/")) url = null;
+  }
+  return rows;
+}
+
+const INS_FIELDS = "spend,impressions,reach,actions,cost_per_action_type,purchase_roas";
+const LEVEL_NAME: Record<string, string> = { campaign: "campaign_name", adset: "adset_name", ad: "ad_name" };
+
+// Baris insight → bentuk kolom yang dipakai dashboard (sama dengan CSV Meta).
+function rowFromInsight(name: string, ins: any) {
+  const spend = num(ins.spend) || 0;
+  const purchases = actionValue(ins.actions, PURCHASE) || 0;
+  const contacts = actionValue(ins.actions, LEAD) || 0;
+  return {
+    "Ad name": name || "Unknown",
+    "Amount spent (IDR)": spend,
+    "Purchases": purchases,
+    "Cost per purchase (IDR)": actionValue(ins.cost_per_action_type, PURCHASE) || (purchases > 0 ? spend / purchases : 0),
+    "Purchase ROAS (return on ad spend)": actionValue(ins.purchase_roas, PURCHASE) || 0,
+    "Contacts": contacts,
+    "Cost per contact (IDR)": actionValue(ins.cost_per_action_type, LEAD) || (contacts > 0 ? spend / contacts : 0),
+    "Landing page views": actionValue(ins.actions, LPV) || 0,
+    "Adds to cart": actionValue(ins.actions, ATC) || 0,
+    "Impressions": num(ins.impressions) || 0,
+    "Reach": num(ins.reach) || 0,
+    "Quality ranking": ins.quality_ranking || "-",
+    "Conversion rate ranking": ins.conversion_rate_ranking || "-",
+  };
+}
+
+// Level campaign/adset memakai insights akun (tanpa ranking kualitas, yang hanya ada di level ad).
+export async function getLevelData(env: Env, level: string, datePreset: string, since?: string, until?: string): Promise<any[]> {
+  const nameField = LEVEL_NAME[level];
+  if (!nameField) throw new Error("level harus campaign, adset, atau ad.");
+  const rows = await insightsAll(env, `level=${level}&fields=${nameField},${INS_FIELDS}&${timeQuery(datePreset, since, until)}`);
+  return rows.map((r) => rowFromInsight(r[nameField], r));
+}
+
+// Purchase & spend per hari untuk grafik.
+export async function getDailyData(env: Env, datePreset: string, since?: string, until?: string): Promise<any[]> {
+  const rows = await insightsAll(env, `time_increment=1&fields=date_start,${INS_FIELDS}&${timeQuery(datePreset, since, until)}`);
+  return rows.map((r) => ({ date: r.date_start, spend: num(r.spend) || 0, purchases: actionValue(r.actions, PURCHASE) || 0, impressions: num(r.impressions) || 0 }));
+}
+
+// Nama region Meta (Inggris) → kode provinsi (cocok dengan web/src/pages/idMap.ts).
+const REGION_CODE: Record<string, number> = {
+  "aceh": 11, "north sumatra": 12, "west sumatra": 13, "riau": 14, "jambi": 15, "south sumatra": 16, "bengkulu": 17, "lampung": 18,
+  "bangka belitung islands": 19, "riau islands": 21, "jakarta": 31, "special capital region of jakarta": 31, "west java": 32, "central java": 33,
+  "special region of yogyakarta": 34, "yogyakarta": 34, "east java": 35, "banten": 36, "bali": 51, "west nusa tenggara": 52, "east nusa tenggara": 53,
+  "west kalimantan": 61, "central kalimantan": 62, "south kalimantan": 63, "east kalimantan": 64, "north kalimantan": 65,
+  "north sulawesi": 71, "central sulawesi": 72, "south sulawesi": 73, "southeast sulawesi": 74, "gorontalo": 75, "west sulawesi": 76,
+  "maluku": 81, "north maluku": 82, "papua": 91, "west papua": 92,
+};
+
+export async function getRegionData(env: Env, datePreset: string, since?: string, until?: string, campaign?: string): Promise<any[]> {
+  const filt = campaign ? `&filtering=${encodeURIComponent(JSON.stringify([{ field: "campaign.name", operator: "EQUAL", value: campaign }]))}` : "";
+  const rows = await insightsAll(env, `breakdowns=region&fields=region,${INS_FIELDS}&${timeQuery(datePreset, since, until)}${filt}`);
+  return rows.map((r) => ({
+    region: r.region,
+    code: REGION_CODE[String(r.region).toLowerCase()] ?? null,
+    impressions: num(r.impressions) || 0,
+    spend: num(r.spend) || 0,
+    purchases: actionValue(r.actions, PURCHASE) || 0,
+  }));
+}
+
+export async function getLiveDashboardData(env: Env, datePreset: string = "maximum", since?: string, until?: string): Promise<any[]> {
+  if (!metaConfigured(env)) throw new Error("Meta belum dikonfigurasi. Isi Access Token dan Ad Account ID di halaman Pengaturan.");
+  let timeParam = "";
+  if (since && until) {
+    timeQuery(datePreset, since, until); // validasi
     timeParam = `time_range({"since":"${since}","until":"${until}"})`;
   } else {
+    timeQuery(datePreset);
     timeParam = `date_preset(${datePreset})`;
   }
 

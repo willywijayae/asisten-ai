@@ -102,8 +102,16 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
     const urlObj = new URL(req.url);
     const preset = urlObj.searchParams.get("preset") || "last_7d";
     try {
-      const data = await meta.getLiveDashboardData(env, preset, urlObj.searchParams.get("since") || undefined, urlObj.searchParams.get("until") || undefined);
-      return json({ data });
+      const since = urlObj.searchParams.get("since") || undefined;
+      const until = urlObj.searchParams.get("until") || undefined;
+      const level = urlObj.searchParams.get("level") || "ad";
+      const data = level === "ad" ? await meta.getLiveDashboardData(env, preset, since, until) : await meta.getLevelData(env, level, preset, since, until);
+      // Grafik harian & peta wilayah opsional: gagal tidak menggagalkan tabel utama.
+      const [daily, regions] = await Promise.all([
+        meta.getDailyData(env, preset, since, until).catch(() => []),
+        meta.getRegionData(env, preset, since, until).catch(() => []),
+      ]);
+      return json({ data, daily, regions });
     } catch (e: any) {
       throw new HttpError(500, e.message);
     }

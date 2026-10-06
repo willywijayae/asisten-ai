@@ -22,6 +22,7 @@ import {
 import Papa from "papaparse";
 import { Badge, Button, Card, PageHeader, SectionTitle, Spinner } from "../components/ui";
 import { api } from "../lib/api";
+import { ID_MAP } from "./idMap";
 import { DEFAULT_ANALYSIS, DEFAULT_ROWS } from "./metaAdsDefaultData";
 
 type Row = Record<string, string>;
@@ -183,6 +184,106 @@ function Donut({ items }: { items: { label: string; value: number; color: string
   );
 }
 
+type Daily = { date: string; spend: number; purchases: number; impressions: number };
+type Region = { region: string; code: number | null; impressions: number; spend: number; purchases: number };
+type Level = "campaign" | "adset" | "ad";
+const LEVELS: { id: Level; label: string }[] = [
+  { id: "campaign", label: "Campaign" },
+  { id: "adset", label: "Ad Set" },
+  { id: "ad", label: "Ad" },
+];
+
+function PurchaseChart({ daily, perAd }: { daily: Daily[]; perAd: { name: string; purchases: number; color: string }[] }) {
+  const items = daily.length > 0
+    ? daily.map((d) => ({ label: d.date.slice(5), full: d.date, value: d.purchases, color: "#c2410c" }))
+    : perAd.map((a) => ({ label: a.name, full: a.name, value: a.purchases, color: a.color }));
+  const max = Math.max(1, ...items.map((i) => i.value));
+  const total = items.reduce((a, i) => a + i.value, 0);
+  return (
+    <div>
+      <p className="mb-3 text-xs text-muted">
+        {daily.length > 0 ? "Purchase per hari" : "Purchase per baris (data harian muncul setelah Tarik Live)"} · total <b className="text-fg">{total}</b>
+      </p>
+      <div className="flex h-44 items-end gap-1.5 overflow-x-auto pb-1" role="img" aria-label="Grafik purchase">
+        {items.map((i) => (
+          <div key={i.full} className="flex h-full min-w-[26px] flex-1 flex-col items-center justify-end gap-1" title={`${i.full}: ${i.value} purchase`}>
+            <span className="text-[11px] font-semibold tabular-nums">{i.value}</span>
+            <div className="w-full rounded-t-md" style={{ height: `${(i.value / max) * 100}%`, minHeight: i.value > 0 ? 4 : 1, background: i.color }} />
+            <span className="max-w-full truncate text-[10px] text-muted">{i.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RegionHeatmap({ regions }: { regions: Region[] }) {
+  const [sel, setSel] = useState("all");
+  const byCode = useMemo(() => {
+    const m = new Map<number, Region>();
+    for (const r of regions) if (r.code != null) m.set(r.code, { ...(m.get(r.code) ?? r), ...r, impressions: (m.get(r.code)?.impressions ?? 0) + r.impressions });
+    return m;
+  }, [regions]);
+  const sortedR = useMemo(() => [...regions].sort((a, b) => b.impressions - a.impressions), [regions]);
+  const max = Math.max(1, ...regions.map((r) => r.impressions));
+  const fmt = (n: number) => new Intl.NumberFormat("id-ID").format(n);
+  if (regions.length === 0) {
+    return <p className="text-sm text-muted">Belum ada data wilayah. Klik <b>Tarik Live</b> (butuh Meta API) untuk memuat impresi per provinsi.</p>;
+  }
+  const shade = (imp: number) => `rgb(${Math.round(226 - 190 * (imp / max))} ${Math.round(232 - 150 * (imp / max))} ${Math.round(240 - 60 * (imp / max))})`;
+  const selR = sel === "all" ? null : regions.find((r) => r.region === sel) ?? null;
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+      <div>
+        <svg viewBox="0 0 1000 370" className="w-full" role="img" aria-label="Peta panas impresi per provinsi">
+          {ID_MAP.map((f) => {
+            const r = byCode.get(f.kode);
+            const active = selR ? selR.code === f.kode : true;
+            return (
+              <path key={f.kode} d={f.d} fill={r ? shade(r.impressions) : "#f1f5f9"} stroke={selR && selR.code === f.kode ? "#0f172a" : "#fff"} strokeWidth={selR && selR.code === f.kode ? 2 : 0.8}
+                opacity={active ? 1 : 0.35} className={r ? "cursor-pointer" : ""} onClick={() => r && setSel(sel === r.region ? "all" : r.region)}>
+                <title>{f.name}: {r ? `${fmt(r.impressions)} impresi` : "tidak ada data"}</title>
+              </path>
+            );
+          })}
+        </svg>
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-muted">
+          <span>Sedikit</span>
+          <span className="h-2 flex-1 rounded-full" style={{ background: `linear-gradient(90deg, ${shade(0)}, ${shade(max)})` }} />
+          <span>Banyak ({fmt(max)})</span>
+        </div>
+      </div>
+      <div>
+        <label className="mb-2 flex items-center gap-2 text-sm">
+          <span className="text-muted">Filter wilayah</span>
+          <select value={sel} onChange={(e) => setSel(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm">
+            <option value="all">Semua wilayah</option>
+            {sortedR.map((r) => <option key={r.region} value={r.region}>{r.region}</option>)}
+          </select>
+        </label>
+        {selR && (
+          <div className="mb-2 grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="rounded-xl bg-[#eef0fb] p-2"><b className="block text-sm tabular-nums">{fmt(selR.impressions)}</b>impresi</div>
+            <div className="rounded-xl bg-[#eef0fb] p-2"><b className="block text-sm tabular-nums">{fmt(selR.spend)}</b>spend</div>
+            <div className="rounded-xl bg-[#eef0fb] p-2"><b className="block text-sm tabular-nums">{selR.purchases}</b>purchase</div>
+          </div>
+        )}
+        <ul className="max-h-64 space-y-1.5 overflow-y-auto pr-1 text-sm">
+          {sortedR.filter((r) => sel === "all" || r.region === sel).map((r) => (
+            <li key={r.region}>
+              <button type="button" onClick={() => setSel(sel === r.region ? "all" : r.region)} className="grid w-full grid-cols-[1fr_auto] items-center gap-x-2 text-left">
+                <span className="truncate">{r.region}</span>
+                <span className="text-xs tabular-nums text-muted">{fmt(r.impressions)}</span>
+                <span className="col-span-2 h-1.5 overflow-hidden rounded-full bg-[#eef0fb]"><span className="block h-full rounded-full" style={{ width: `${(r.impressions / max) * 100}%`, background: "#1d4ed8" }} /></span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 export function MetaAds() {
   const [rows, setRows] = useState<Row[]>(() => {
     try {
@@ -213,6 +314,9 @@ export function MetaAds() {
   const [since, setSince] = useState<string>(() => localStorage.getItem("meta_ads_since") || new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10));
   const [until, setUntil] = useState<string>(() => localStorage.getItem("meta_ads_until") || todayStr);
   const [err, setErr] = useState("");
+  const [level, setLevel] = useState<Level>("ad");
+  const [daily, setDaily] = useState<Daily[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
   const [activeTab, setActiveTab] = useState<"overview" | "analysis">("overview");
 
   const headers = useMemo(() => (rows[0] ? Object.keys(rows[0]) : []), [rows]);
@@ -284,6 +388,7 @@ export function MetaAds() {
       name: r["Ad name"] || "-",
       spend: num(r["Amount spent (IDR)"]) || 0,
       roas: num(r["Purchase ROAS (return on ad spend)"]),
+      purchases: num(r["Purchases"]) || 0,
     }));
     return list.sort((a, b) => b.spend - a.spend).map((a, i) => ({ ...a, color: PALETTE[i % PALETTE.length] }));
   }, [rows]);
@@ -299,11 +404,13 @@ export function MetaAds() {
   }, [rows, sort, numeric]);
 
   
-  async function fetchLive() {
+  async function fetchLive(lv: Level = level) {
     setBusy("live");
     setErr("");
     try {
-      const res = await api<{ data: Row[] }>(`/meta-ads/live?since=${since}&until=${until}`);
+      const res = await api<{ data: Row[]; daily?: Daily[]; regions?: Region[] }>(`/meta-ads/live?since=${since}&until=${until}&level=${lv}`);
+      setDaily(res.daily ?? []);
+      setRegions(res.regions ?? []);
       try { localStorage.setItem("meta_ads_since", since); localStorage.setItem("meta_ads_until", until); } catch {}
       if (!res.data || res.data.length === 0) {
         setErr("Tidak ada data iklan yang aktif/ditemukan dari Meta API.");
@@ -425,7 +532,7 @@ export function MetaAds() {
             <span className="text-xs text-muted">s/d</span>
             <input type="date" value={until} min={since} max={todayStr} aria-label="Sampai tanggal" onChange={(e) => setUntil(e.target.value)} className="bg-transparent text-sm" />
           </label>
-          <Button variant="secondary" onClick={fetchLive} disabled={busy !== null} className="rounded-full">
+          <Button variant="secondary" onClick={() => fetchLive()} disabled={busy !== null} className="rounded-full">
             {busy === "live" ? <Spinner label="Menarik Data..." /> : <Activity className="size-4" />} Tarik Live
           </Button>
           <Button variant="primary" onClick={() => analyze("all")} disabled={busy !== null} className="rounded-full">
@@ -441,6 +548,18 @@ export function MetaAds() {
             </Button>
           )}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Level data">
+        <span className="text-sm text-muted">Level:</span>
+        {LEVELS.map((l) => (
+          <button key={l.id} type="button" aria-pressed={level === l.id} disabled={busy !== null}
+            onClick={() => { setLevel(l.id); if (fileName.startsWith("Live Meta API")) fetchLive(l.id); }}
+            className={`rounded-full border px-4 py-1.5 text-sm font-medium ${level === l.id ? "border-fg bg-fg text-bg" : "border-line bg-surface hover:border-fg/40"}`}>
+            {l.label}
+          </button>
+        ))}
+        {!fileName.startsWith("Live Meta API") && <span className="text-xs text-muted">Pilih level lalu klik Tarik Live (CSV hanya level iklan).</span>}
       </div>
 
       {err && (
@@ -518,6 +637,17 @@ export function MetaAds() {
         </Card>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="p-4">
+          <SectionTitle>Grafik Purchase</SectionTitle>
+          <PurchaseChart daily={daily} perAd={perAd} />
+        </Card>
+        <Card className="p-4 lg:col-span-2">
+          <SectionTitle>Heatmap Impresi per Wilayah</SectionTitle>
+          <RegionHeatmap regions={regions} />
+        </Card>
+      </div>
+
       {/* Tabs Navigation */}
       <div className="flex border-b border-line gap-4 text-sm font-medium">
         <button
@@ -549,7 +679,7 @@ export function MetaAds() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-fg">
-              Daftar Iklan & Breakdown ({sorted.length} Iklan)
+              Daftar {level === "campaign" ? "Campaign" : level === "adset" ? "Ad Set" : "Iklan"} & Breakdown ({sorted.length})
             </h3>
             <span className="text-xs text-muted">
               Klik nama kolom untuk urutkan · Klik tombol <strong>Breakdown</strong> untuk rincian
