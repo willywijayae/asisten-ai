@@ -6,6 +6,7 @@ import { formatLocal, localDayRange, localToUtc, nowContext } from "./time";
 import { clip, logActivity, logTool, type AgentId } from "./activity";
 import * as memory from "./memory";
 import { runMarketing, SPECIALIST_IDS, SPECIALISTS } from "./marketing";
+import * as intel from "./intel";
 
 const SYSTEM_PROMPT = `Kamu adalah asisten pribadi (chief of staff) milik satu orang: pemilik bot Telegram ini.
 Tugasmu: mencatat & mengawal komitmen, mengingatkan jadwal, merangkum informasi, dan menyimpan catatan (second brain).
@@ -30,7 +31,7 @@ Aturan kerja:
 - Kalau ada yang ambigu dan penting (misal jam tidak jelas), tetap catat dengan tebakan terbaik lalu sebutkan asumsinya, daripada banyak bertanya.
 - Saat menjawab dari catatan, memori, atau tugas, sebut sumbernya singkat (mis. "menurut catatan #12", "dari memori 3 Okt"). Bedakan yang tercatat dengan dugaanmu sendiri (tandai dengan "kemungkinan" / "dugaanku").
 - Pesan pemilik bisa disertai blok <konteks_otomatis>: hasil pencarian otomatis (berdasarkan makna) di memori jangka panjang, catatan, dan tugas. Pakai kalau relevan, abaikan kalau tidak. Memori punya tanggal; kalau ada yang bertentangan, yang terbaru biasanya yang berlaku. Untuk pencarian lain pakai search_memory / search_notes / list_tasks.
-- Permintaan MARKETING (copy/caption/hook iklan, ide atau kalender konten, analisis performa iklan, riset pasar/kompetitor/audiens, strategi marketing) serahkan ke tim marketing dengan delegate_marketing. Jangan tulis sendiri. Hasil lengkapnya otomatis dikirim ke pemilik, jadi balasanmu cukup satu kalimat pengantar.
+- Pertanyaan tentang iklan Meta pemilik sendiri (performa, ROAS, CPA, iklan mana yang jalan): panggil read_own_ads dulu, jawab dari angka itu, jangan mengarang.\n- Permintaan MARKETING (copy/caption/hook iklan, ide atau kalender konten, analisis performa iklan, riset pasar/kompetitor/audiens, strategi marketing) serahkan ke tim marketing dengan delegate_marketing. Jangan tulis sendiri. Hasil lengkapnya otomatis dikirim ke pemilik, jadi balasanmu cukup satu kalimat pengantar.
 - Fakta dari obrolan diingat otomatis di latar belakang. Pakai remember_fact hanya kalau pemilik secara eksplisit minta sesuatu diingat ("ingat ya...", "catat di memori...") dan itu fakta, bukan catatan panjang (save_note) atau aturan cara kerjamu (remember_preference).
 - Kalau pemilik mengoreksi caramu bekerja atau menyatakan preferensi yang berlaku ke depan (gaya bahasa, sapaan, arti istilah, kebiasaan, hal yang tidak disukai), simpan dengan remember_preference lalu konfirmasi singkat. Jangan simpan hal sekali pakai; itu bukan preferensi. Kalau pemilik minta melupakan preferensi, pakai forget_preference.
 - WAJIB: setiap permintaan mencatat, menyimpan, mengubah, atau menyelesaikan sesuatu harus dilakukan dengan memanggil tool yang sesuai di giliran ini. Jangan pernah bilang "sudah dicatat/disimpan/diubah" sebelum menerima hasil tool yang sukses. Balasan lama di riwayat obrolan tidak berarti apa pun sudah tersimpan.`;
@@ -133,6 +134,15 @@ const MARKETING_TOOL = fn(
       request: { type: "string", description: "Permintaan lengkap pemilik, termasuk produk, tujuan, audiens, dan data yang ia berikan (salin angka apa adanya)." },
     },
     required: ["specialist", "request"],
+  },
+);
+
+const ADS_TOOL = fn(
+  "read_own_ads",
+  "Baca data performa iklan Meta pemilik yang tersimpan (spend, impressions, CTR, CPA, ROAS, frekuensi, status per iklan). Pakai sebelum menjawab pertanyaan tentang iklan sendiri.",
+  {
+    type: "object",
+    properties: { product: { type: "string", description: "Filter nama produk, kosongkan untuk semua iklan." } },
   },
 );
 
@@ -389,6 +399,12 @@ export async function executeTool(env: Env, ctx: RunContext, name: string, input
       const f = await google.driveSaveDoc(env, String(input.title), String(input.content));
       return `Tersimpan di Google Drive folder "Second Brain": ${f.link}`;
     }
+    case "read_own_ads": {
+      const ads = await intel.listOwnAds(env, input?.product || undefined);
+      if (ads.length === 0) return "Belum ada data iklan tersimpan. Minta pemilik sinkron Meta Ads di Pengaturan atau unggah CSV di halaman Meta Ads.";
+      const total = ads.reduce((a: number, r: any) => a + (Number(r.spend) || 0), 0);
+      return `Total ${ads.length} iklan, spend ${Math.round(total)}.\n${JSON.stringify(ads.slice(0, 60))}`;
+    }
     case "search_memory": {
       const rows = await memory.recallMemories(env, String(input.query ?? ""), 10);
       return rows.length
@@ -609,7 +625,7 @@ export async function runAgent(
     { role: "user", content: userContent },
   ];
   const baseTools = opts.useTools
-    ? [...TOOLS, MARKETING_TOOL, ...MEMORY_TOOLS, ...(googleOn ? GOOGLE_TOOLS : []), ...(interviewing ? [SAVE_PROFILE_TOOL] : [])]
+    ? [...TOOLS, MARKETING_TOOL, ADS_TOOL, ...MEMORY_TOOLS, ...(googleOn ? GOOGLE_TOOLS : []), ...(interviewing ? [SAVE_PROFILE_TOOL] : [])]
     : undefined;
   // Model cepat boleh escalate (juga saat briefing tanpa tool, supaya tidak perlu).
   const toolsFor = () => (baseTools && tier === "fast" ? [...baseTools, ESCALATE_TOOL] : baseTools);

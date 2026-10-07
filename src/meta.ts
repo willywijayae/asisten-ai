@@ -261,3 +261,29 @@ export async function analyzeMetaAds(env: Env, data: any[], row?: any): Promise<
   const res = await complete(env, { system: SYS, user, tier: "smart", actor: "opus", maxTokens: 3500 });
   return res.text;
 }
+
+const CHAT_SYS = `Kamu Analis Iklan senior (performance marketing) untuk e-commerce Indonesia, menjadi pendamping pemilik di dashboard Meta Ads.
+Kamu melihat tabel data iklan yang sedang dibuka pemilik (dalam JSON) dan wajib menjawab HANYA dari angka itu.
+- Jawab Bahasa Indonesia, kalimat pendek, langsung ke inti. Jangan pakai tabel, heading, atau simbol markdown.
+- Selalu sebut angka aktual dan hitung metrik turunan (CPA, ROAS, CTR funnel) kalau perlu. Tunjukkan hitungannya singkat.
+- Jangan mengarang data. Kalau yang ditanya tidak ada di tabel, bilang data itu tidak ada dan sebut apa yang perlu ditarik.
+- Kalau pemilik minta keputusan, jawab tegas: scale, pertahankan, perbaiki, atau matikan, plus alasan dan angka budget.
+- Kalau pertanyaannya bukan soal data (mis. minta ide copy atau strategi), jawab sebagai praktisi marketing, tetap singkat.`;
+
+/** Tanya-jawab lanjutan tentang tabel yang sedang dibuka di dashboard. */
+export async function chatMetaAds(
+  env: Env,
+  data: any[],
+  question: string,
+  history: { role: "user" | "assistant"; content: string }[] = [],
+  meta?: { level?: string; period?: string; daily?: any[]; regions?: any[] },
+): Promise<string> {
+  const parts = [`Tabel iklan yang sedang dibuka (level ${meta?.level || "ad"}${meta?.period ? `, periode ${meta.period}` : ""}):\n${adCsvSummary(data)}`];
+  if (meta?.daily?.length) parts.push(`Purchase & spend per hari:\n${JSON.stringify(meta.daily.slice(0, 60))}`);
+  if (meta?.regions?.length) parts.push(`Impresi per wilayah:\n${JSON.stringify(meta.regions.slice(0, 40))}`);
+  const convo = history.slice(-8).map((h) => `${h.role === "user" ? "Pemilik" : "Kamu"}: ${h.content}`).join("\n");
+  if (convo) parts.push(`Obrolan sebelumnya:\n${convo}`);
+  parts.push(`Pertanyaan pemilik: ${question}`);
+  const res = await complete(env, { system: CHAT_SYS, user: parts.join("\n\n"), tier: "smart", actor: "opus", maxTokens: 1800 });
+  return res.text;
+}

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -9,6 +9,8 @@ import {
   RefreshCw,
   Activity,
   Infinity as InfinityIcon,
+  ArrowUp,
+  Bot,
   Calendar,
   Eye,
   Users,
@@ -296,6 +298,101 @@ function RegionHeatmap({ regions }: { regions: Region[] }) {
   );
 }
 
+type ChatTurn = { role: "user" | "assistant"; content: string };
+
+const CHAT_IDE = [
+  "Iklan mana yang harus dimatikan?",
+  "Kenapa ROAS turun?",
+  "Bagi budget Rp 1 juta per hari sebaiknya bagaimana?",
+  "Wilayah mana yang paling boros impresi tapi nol purchase?",
+];
+
+// Ruang chat yang membaca tabel yang sedang dibuka; jawaban dari agen analis iklan.
+function AdsChat({ rows, level, period, daily, regions }: { rows: Row[]; level: Level; period: string; daily: Daily[]; regions: Region[] }) {
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState("");
+  const bottom = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { bottom.current?.scrollIntoView({ block: "end" }); }, [turns.length, sending]);
+
+  async function send(text = input) {
+    const question = text.trim();
+    if (!question || sending) return;
+    setInput("");
+    setErr("");
+    const history = turns.slice(-8);
+    setTurns((t) => [...t, { role: "user", content: question }]);
+    setSending(true);
+    try {
+      const res = await api<{ reply: string }>("/meta-ads/chat", {
+        method: "POST",
+        body: { question, data: rows, history, level, period, daily, regions },
+      });
+      setTurns((t) => [...t, { role: "assistant", content: res.reply }]);
+    } catch (e: any) {
+      setErr(e?.message || "Gagal menghubungi analis.");
+      setInput(question);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Card className="flex h-[32rem] flex-col overflow-hidden p-0">
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+        <Bot className="size-5 text-accent" aria-hidden />
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">Tanya Analis Iklan</h3>
+          <p className="truncate text-xs text-muted">Membaca {rows.length} baris level {level} · {period}</p>
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+        {turns.length === 0 && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted">Tanya apa saja soal data yang sedang terbuka. Analis hanya menjawab dari angka di tabel ini.</p>
+            <div className="flex flex-wrap gap-2">
+              {CHAT_IDE.map((q) => (
+                <button key={q} type="button" onClick={() => send(q)} className="rounded-full border border-line px-3 py-1.5 text-xs text-muted hover:text-fg">
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {turns.map((t, i) => (
+          <div key={i} className={`flex ${t.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm ${t.role === "user" ? "rounded-br-md bg-slate-600 text-white" : "rounded-bl-md bg-surface-2 text-fg"}`}>
+              {t.role === "user" ? <p className="whitespace-pre-wrap break-words">{t.content}</p> : <ReadableText text={t.content} />}
+            </div>
+          </div>
+        ))}
+        {sending && <p className="flex items-center gap-2 text-xs text-muted"><Spinner label="Analis sedang membaca data…" /></p>}
+        {err && <p className="text-xs text-danger">{err}</p>}
+        <div ref={bottom} />
+      </div>
+
+      <form className="flex items-end gap-2 border-t border-line p-3" onSubmit={(e) => { e.preventDefault(); send(); }}>
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+          rows={1}
+          placeholder="Tanya soal data iklan ini…"
+          aria-label="Pertanyaan untuk analis iklan"
+          className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-line bg-surface px-3 py-2.5 text-base outline-none focus:border-accent sm:text-sm"
+        />
+        <Button type="submit" variant="primary" disabled={sending || !input.trim()} className="size-11 shrink-0 justify-center rounded-xl p-0">
+          <ArrowUp className="size-4" />
+          <span className="sr-only">Kirim</span>
+        </Button>
+      </form>
+    </Card>
+  );
+}
+
 export function MetaAds() {
   const [rows, setRows] = useState<Row[]>(() => {
     try {
@@ -329,7 +426,7 @@ export function MetaAds() {
   const [level, setLevel] = useState<Level>("ad");
   const [daily, setDaily] = useState<Daily[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
-  const [activeTab, setActiveTab] = useState<"overview" | "analysis">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "analysis" | "chat">("overview");
 
   const headers = useMemo(() => (rows[0] ? Object.keys(rows[0]) : []), [rows]);
   const viewColumns = useMemo(() => KEY_COLUMNS.filter((h) => headers.includes(h)), [headers]);
@@ -690,6 +787,15 @@ export function MetaAds() {
           <span>Analisa Lengkap Claude Opus & Action Plan</span>
           <Badge tone="ok">Siap Dibaca</Badge>
         </button>
+        <button
+          onClick={() => setActiveTab("chat")}
+          className={`flex items-center gap-1.5 border-b-2 pb-2.5 transition ${
+            activeTab === "chat" ? "border-accent font-semibold text-accent" : "border-transparent text-muted hover:text-fg"
+          }`}
+        >
+          <Bot className="size-4" aria-hidden />
+          <span>Tanya Analis</span>
+        </button>
       </div>
 
       {/* Tab 1: Interactive Table with Row Breakdown */}
@@ -904,6 +1010,10 @@ export function MetaAds() {
       )}
 
       {/* Tab 2: Full Opus Analysis & Action Plan */}
+      {activeTab === "chat" && (
+        <AdsChat rows={rows} level={level} period={fileName} daily={daily} regions={regions} />
+      )}
+
       {activeTab === "analysis" && overall && (
         <Card className="p-6 space-y-4 border-l-4 border-l-accent shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">

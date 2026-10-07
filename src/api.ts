@@ -117,6 +117,22 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
     }
   }
 
+  if (path === "/meta-ads/chat" && method === "POST") {
+    if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
+    const b = await readJson(req);
+    const question = String(b.question ?? "").trim();
+    if (!question) throw new HttpError(400, "Pertanyaan kosong");
+    if (!Array.isArray(b.data) || b.data.length === 0) throw new HttpError(400, "Belum ada data iklan di dashboard");
+    try {
+      const reply = await meta.chatMetaAds(env, b.data, question, Array.isArray(b.history) ? b.history : [], {
+        level: b.level, period: b.period, daily: b.daily, regions: b.regions,
+      });
+      return json({ reply });
+    } catch (e: any) {
+      throw new HttpError(500, e.message);
+    }
+  }
+
   if (path === "/meta-ads/analyze" && method === "POST") {
     if (!(await isLoggedIn(env, req))) throw new HttpError(401, "Belum login");
     const { data, row } = await readJson(req);

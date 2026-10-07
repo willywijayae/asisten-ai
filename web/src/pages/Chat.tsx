@@ -5,6 +5,7 @@ import { fmtWhen } from "../lib/time";
 import { Button, Card, Empty, Spinner } from "../components/ui";
 import { TaskModal, TaskRow } from "../components/tasks";
 import { useToast } from "../components/app-context";
+import { ReadableText } from "./ReadableText";
 
 type Item =
   | ChatMessage
@@ -16,6 +17,7 @@ const SUGGESTIONS = [
   "Ringkas catatan yang berhubungan dengan marketing",
   "Ingetin aku follow up klien besok jam 10",
   "Email apa aja yang belum kubalas hari ini?",
+  "Iklan Meta mana yang ROAS-nya paling jelek?",
   "/profil",
 ];
 
@@ -128,7 +130,7 @@ export function Chat({ onChanged }: { onChanged: () => void }) {
                         m.role === "user" ? "rounded-br-md bg-slate-600 text-white" : "rounded-bl-md bg-surface-2 text-fg"
                       }`}
                     >
-                      <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                      {m.role === "user" ? <p className="whitespace-pre-wrap break-words">{m.content}</p> : <ReadableText text={m.content ?? ""} />}
                       <p className={`mt-1 text-[10px] ${m.role === "user" ? "opacity-70" : "text-muted"}`}>{fmtWhen(m.created_at)}</p>
                     </div>
                   </div>
