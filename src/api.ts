@@ -107,11 +107,12 @@ async function route(req: Request, env: Env, url: URL, ctx: ExecutionContext): P
       const level = urlObj.searchParams.get("level") || "ad";
       const data = level === "ad" ? await meta.getLiveDashboardData(env, preset, since, until) : await meta.getLevelData(env, level, preset, since, until);
       // Grafik harian & peta wilayah opsional: gagal tidak menggagalkan tabel utama.
+      const warnings: string[] = [];
       const [daily, regions] = await Promise.all([
-        meta.getDailyData(env, preset, since, until).catch(() => []),
-        meta.getRegionData(env, preset, since, until).catch(() => []),
+        meta.getDailyData(env, preset, since, until).catch((e) => { warnings.push(`Data harian: ${e.message}`); return []; }),
+        meta.getRegionData(env, preset, since, until).catch((e) => { warnings.push(`Data wilayah: ${e.message}`); return []; }),
       ]);
-      return json({ data, daily, regions });
+      return json({ data, daily, regions, warnings });
     } catch (e: any) {
       throw new HttpError(500, e.message);
     }

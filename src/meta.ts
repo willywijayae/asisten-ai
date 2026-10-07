@@ -92,6 +92,7 @@ async function insightsAll(env: Env, qs: string): Promise<any[]> {
 }
 
 const INS_FIELDS = "spend,impressions,reach,actions,cost_per_action_type,purchase_roas";
+const LIGHT_FIELDS = "spend,impressions,actions"; // untuk breakdown wilayah/harian: tanpa field berat yang sering ditolak Meta
 const LEVEL_NAME: Record<string, string> = { campaign: "campaign_name", adset: "adset_name", ad: "ad_name" };
 
 // Baris insight → bentuk kolom yang dipakai dashboard (sama dengan CSV Meta).
@@ -126,7 +127,7 @@ export async function getLevelData(env: Env, level: string, datePreset: string, 
 
 // Purchase & spend per hari untuk grafik.
 export async function getDailyData(env: Env, datePreset: string, since?: string, until?: string): Promise<any[]> {
-  const rows = await insightsAll(env, `time_increment=1&fields=date_start,${INS_FIELDS}&${timeQuery(datePreset, since, until)}`);
+  const rows = await insightsAll(env, `time_increment=1&fields=date_start,${LIGHT_FIELDS}&${timeQuery(datePreset, since, until)}`);
   return rows.map((r) => ({ date: r.date_start, spend: num(r.spend) || 0, purchases: actionValue(r.actions, PURCHASE) || 0, impressions: num(r.impressions) || 0 }));
 }
 
@@ -142,7 +143,7 @@ const REGION_CODE: Record<string, number> = {
 
 export async function getRegionData(env: Env, datePreset: string, since?: string, until?: string, campaign?: string): Promise<any[]> {
   const filt = campaign ? `&filtering=${encodeURIComponent(JSON.stringify([{ field: "campaign.name", operator: "EQUAL", value: campaign }]))}` : "";
-  const rows = await insightsAll(env, `breakdowns=region&fields=region,${INS_FIELDS}&${timeQuery(datePreset, since, until)}${filt}`);
+  const rows = await insightsAll(env, `breakdowns=region&fields=region,${LIGHT_FIELDS}&${timeQuery(datePreset, since, until)}${filt}`);
   return rows.map((r) => ({
     region: r.region,
     code: REGION_CODE[String(r.region).toLowerCase()] ?? null,

@@ -266,7 +266,7 @@ function RegionHeatmap({ regions }: { regions: Region[] }) {
       </div>
       {!has && (
         <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-muted">
-          Data wilayah belum ada. Peta di bawah masih kosong. Data ini diambil otomatis dari Meta. Pastikan Access Token dan Ad Account ID sudah diisi di Pengaturan, Sistem.
+          Data wilayah belum ada. Peta di bawah masih kosong. Meta tidak mengembalikan data wilayah untuk periode ini. Kalau ada kotak peringatan kuning di atas, itu penyebabnya. Kalau tidak ada, iklan belum menayang di periode ini.
         </p>
       )}
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
@@ -434,6 +434,7 @@ export function MetaAds() {
   const [until, setUntil] = useState<string>(() => localStorage.getItem("meta_ads_until") || todayStr);
   const [err, setErr] = useState("");
   const [level, setLevel] = useState<Level>("ad");
+  const [warn, setWarn] = useState<string[]>([]);
   const [daily, setDaily] = useState<Daily[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
   const [activeTab, setActiveTab] = useState<"overview" | "analysis" | "chat">("overview");
@@ -533,9 +534,10 @@ export function MetaAds() {
     setBusy("live");
     setErr("");
     try {
-      const res = await api<{ data: Row[]; daily?: Daily[]; regions?: Region[] }>(`/meta-ads/live?since=${since}&until=${until}&level=${lv}`);
+      const res = await api<{ data: Row[]; daily?: Daily[]; regions?: Region[]; warnings?: string[] }>(`/meta-ads/live?since=${since}&until=${until}&level=${lv}`);
       setDaily(res.daily ?? []);
       setRegions(res.regions ?? []);
+      setWarn(res.warnings ?? []);
       try { localStorage.setItem("meta_ads_since", since); localStorage.setItem("meta_ads_until", until); } catch {}
       setRows(res.data ?? []);
       setFileName(`Meta API · ${since} s/d ${until}`);
@@ -617,6 +619,13 @@ export function MetaAds() {
           </button>
         ))}
       </div>
+
+      {warn.length > 0 && (
+        <Card className="space-y-1 border-warn/40 bg-warn-soft p-3 text-sm text-warn">
+          <p className="font-semibold">Sebagian data dari Meta gagal dimuat:</p>
+          {warn.map((w) => <p key={w} className="break-words">{w}</p>)}
+        </Card>
+      )}
 
       {rows.length === 0 && (
         <Card className="p-8 text-center text-sm text-muted">
