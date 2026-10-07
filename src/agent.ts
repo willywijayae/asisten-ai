@@ -7,6 +7,7 @@ import { clip, logActivity, logTool, type AgentId } from "./activity";
 import * as memory from "./memory";
 import { runMarketing, SPECIALIST_IDS, SPECIALISTS } from "./marketing";
 import * as intel from "./intel";
+import * as meta from "./meta";
 
 const SYSTEM_PROMPT = `Kamu adalah asisten pribadi (chief of staff) milik satu orang: pemilik bot Telegram ini.
 Tugasmu: mencatat & mengawal komitmen, mengingatkan jadwal, merangkum informasi, dan menyimpan catatan (second brain).
@@ -139,10 +140,13 @@ const MARKETING_TOOL = fn(
 
 const ADS_TOOL = fn(
   "read_own_ads",
-  "Baca data performa iklan Meta pemilik yang tersimpan (spend, impressions, CTR, CPA, ROAS, frekuensi, status per iklan). Pakai sebelum menjawab pertanyaan tentang iklan sendiri.",
+  "Tarik data performa iklan Meta pemilik langsung dari Meta API (spend, purchase, CPA, ROAS, kontak, funnel per campaign/adset/ad, 7 hari terakhir). Pakai sebelum menjawab pertanyaan tentang iklan sendiri.",
   {
     type: "object",
-    properties: { product: { type: "string", description: "Filter nama produk, kosongkan untuk semua iklan." } },
+    properties: {
+      level: { type: "string", enum: ["campaign", "adset", "ad"], description: "Default ad." },
+      product: { type: "string", description: "Hanya dipakai untuk data tersimpan (cadangan)." },
+    },
   },
 );
 
@@ -400,10 +404,16 @@ export async function executeTool(env: Env, ctx: RunContext, name: string, input
       return `Tersimpan di Google Drive folder "Second Brain": ${f.link}`;
     }
     case "read_own_ads": {
-      const ads = await intel.listOwnAds(env, input?.product || undefined);
-      if (ads.length === 0) return "Belum ada data iklan tersimpan. Minta pemilik sinkron Meta Ads di Pengaturan atau unggah CSV di halaman Meta Ads.";
-      const total = ads.reduce((a: number, r: any) => a + (Number(r.spend) || 0), 0);
-      return `Total ${ads.length} iklan, spend ${Math.round(total)}.\n${JSON.stringify(ads.slice(0, 60))}`;
+      // Utamakan data live dari Meta; kalau token belum diisi atau gagal, pakai data tersimpan.
+      try {
+        const lv = ["campaign", "adset", "ad"].includes(input?.level) ? input.level : "ad";
+        const rows = lv === "ad" ? await meta.getLiveDashboardData(env, "last_7d") : await meta.getLevelData(env, lv, "last_7d");
+        return `Data live Meta 7 hari terakhir, level ${lv}:\n${JSON.stringify(rows.slice(0, 60))}`;
+      } catch (e: any) {
+        const ads = await intel.listOwnAds(env, input?.product || undefined);
+        if (ads.length === 0) return `Gagal ambil data Meta (${e.message}) dan belum ada data tersimpan.`;
+        return `Data live gagal (${e.message}); ini data tersimpan terakhir:\n${JSON.stringify(ads.slice(0, 60))}`;
+      }
     }
     case "search_memory": {
       const rows = await memory.recallMemories(env, String(input.query ?? ""), 10);

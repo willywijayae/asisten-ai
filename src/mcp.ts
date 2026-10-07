@@ -9,6 +9,7 @@ import { Telegram } from "./telegram";
 import { logTool } from "./activity";
 import * as memory from "./memory";
 import * as competitors from "./competitors";
+import * as meta from "./meta";
 import { localDayRange, nowContext } from "./time";
 
 // Server MCP "Second Brain": membuka tugas, catatan, profil & preferensi pemilik ke Claude
@@ -266,6 +267,30 @@ function buildServer(env: Env, ctx?: ExecutionContext): McpServer {
     async ({ content, entities }) => {
       const res = await memory.addMemory(env, content, "claude", entities ?? []);
       return text(res.id ? `Fakta tersimpan di memori (${res.id}).` : `SUDAH ADA di memori: ${res.duplicateOf?.content}`);
+    },
+  );
+
+  server.registerTool(
+    "get_meta_ads_performance",
+    {
+      title: "Performa iklan Meta (live)",
+      description:
+        "Tarik data performa iklan akun Meta pemilik langsung dari Meta Marketing API (pakai token yang tersimpan): spend, purchase, CPA, ROAS, kontak, funnel per campaign/adset/ad, plus purchase harian dan impresi per wilayah. Pakai untuk analisa iklan sendiri. Tanggal format YYYY-MM-DD; kosongkan untuk 7 hari terakhir.",
+      inputSchema: {
+        level: z.enum(["campaign", "adset", "ad"]).optional().describe("Default ad."),
+        since: z.string().optional(),
+        until: z.string().optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ level, since, until }) => {
+      const lv = level ?? "ad";
+      const rows = lv === "ad" ? await meta.getLiveDashboardData(env, "last_7d", since, until) : await meta.getLevelData(env, lv, "last_7d", since, until);
+      const [daily, regions] = await Promise.all([
+        meta.getDailyData(env, "last_7d", since, until).catch(() => []),
+        meta.getRegionData(env, "last_7d", since, until).catch(() => []),
+      ]);
+      return text(JSON.stringify({ level: lv, rows, daily, regions }, null, 1));
     },
   );
 

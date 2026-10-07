@@ -3,9 +3,7 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
-  Upload,
   AlertTriangle,
-  RotateCcw,
   RefreshCw,
   Activity,
   Infinity as InfinityIcon,
@@ -21,12 +19,10 @@ import {
   TrendingUp,
   MessageCircle,
 } from "lucide-react";
-import Papa from "papaparse";
 import { Badge, Button, Card, PageHeader, SectionTitle, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import { ReadableText } from "./ReadableText";
 import { ID_MAP } from "./idMap";
-import { DEFAULT_ANALYSIS, DEFAULT_ROWS } from "./metaAdsDefaultData";
 
 type Row = Record<string, string>;
 type Sort = { key: string; dir: 1 | -1 };
@@ -222,7 +218,7 @@ function PurchaseChart({ daily, perAd }: { daily: Daily[]; perAd: { name: string
   return (
     <div>
       <p className="mb-3 text-xs text-muted">
-        {daily.length > 0 ? "Purchase per hari" : "Purchase per baris (data harian muncul setelah Tarik Live)"} · total <b className="text-fg">{total}</b>
+        {daily.length > 0 ? "Purchase per hari" : "Purchase per baris (data harian dari Meta API)"} · total <b className="text-fg">{total}</b>
       </p>
       <div className="flex h-44 items-end gap-1.5 overflow-x-auto pb-1" role="img" aria-label="Grafik purchase">
         {items.map((i) => (
@@ -270,7 +266,7 @@ function RegionHeatmap({ regions }: { regions: Region[] }) {
       </div>
       {!has && (
         <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-muted">
-          Data wilayah belum ada. Peta di bawah masih kosong. Klik <b className="text-fg">Tarik Live</b> (perlu token Meta di Pengaturan, Sistem) untuk mengisinya. Data CSV tidak punya rincian wilayah.
+          Data wilayah belum ada. Peta di bawah masih kosong. Data ini diambil otomatis dari Meta. Pastikan Access Token dan Ad Account ID sudah diisi di Pengaturan, Sistem.
         </p>
       )}
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
@@ -422,30 +418,16 @@ function AdsChat({ rows, level, period, daily, regions }: { rows: Row[]; level: 
 }
 
 export function MetaAds() {
-  const [rows, setRows] = useState<Row[]>(() => {
-    try {
-      const saved = localStorage.getItem("meta_ads_custom_rows");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return DEFAULT_ROWS;
-  });
-
-  const [fileName, setFileName] = useState<string>(() => {
-    return localStorage.getItem("meta_ads_custom_filename") || "SVO-BISNISHACK---01-Ads-1-Oct-2026-4-Oct-2026.csv";
-  });
+  const [rows, setRows] = useState<Row[]>([]);
+  const [fileName, setFileName] = useState<string>("");
+  const [loaded, setLoaded] = useState(false);
 
   const [sort, setSort] = useState<Sort>({ key: "Amount spent (IDR)", dir: -1 });
   const [open, setOpen] = useState<number | null>(null);
   const [rowAnalysis, setRowAnalysis] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<number | "all" | "live" | null>(null);
 
-  const [overall, setOverall] = useState<string>(() => {
-    const saved = localStorage.getItem("meta_ads_custom_analysis");
-    return saved || DEFAULT_ANALYSIS;
-  });
+  const [overall, setOverall] = useState<string>("");
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const [since, setSince] = useState<string>(() => localStorage.getItem("meta_ads_since") || new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10));
@@ -555,81 +537,25 @@ export function MetaAds() {
       setDaily(res.daily ?? []);
       setRegions(res.regions ?? []);
       try { localStorage.setItem("meta_ads_since", since); localStorage.setItem("meta_ads_until", until); } catch {}
-      if (!res.data || res.data.length === 0) {
-        setErr("Tidak ada data iklan yang aktif/ditemukan dari Meta API.");
-        return;
-      }
-      setRows(res.data);
-      setFileName(`Live Meta API · ${since} s/d ${until}`);
-      setOverall("");
+      setRows(res.data ?? []);
+      setFileName(`Meta API · ${since} s/d ${until}`);
       setRowAnalysis({});
       setOpen(null);
-      
-      try {
-        localStorage.setItem("meta_ads_custom_rows", JSON.stringify(res.data));
-        localStorage.setItem("meta_ads_custom_filename", `Live Meta API · ${since} s/d ${until}`);
-        localStorage.removeItem("meta_ads_custom_analysis");
-      } catch {}
-      
-      // Auto analyze after fetch
-      const r = await api<{ analysis: string }>("/meta-ads/analyze", {
-        method: "POST",
-        body: { data: res.data },
-      });
-      setOverall(r.analysis);
-      try {
-        localStorage.setItem("meta_ads_custom_analysis", r.analysis);
-      } catch {}
-      setActiveTab("analysis");
-      
+      if (!res.data || res.data.length === 0) setErr("Tidak ada data iklan di periode ini.");
     } catch (e: any) {
-      setErr(e.message ?? "Gagal mengambil data live dari Meta. Pastikan Token Meta terisi di menu Sistem.");
+      setRows([]);
+      setErr(e.message ?? "Gagal mengambil data dari Meta. Pastikan Token Meta terisi di Pengaturan, Sistem.");
     } finally {
       setBusy(null);
+      setLoaded(true);
     }
   }
 
-  function loadFile(file: File) {
-    setErr("");
-    Papa.parse<Row>(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (res) => {
-        const clean = res.data.filter((r) =>
-          Object.values(r).some((v) => String(v ?? "").trim() !== ""),
-        );
-        if (clean.length === 0) {
-          setErr("File CSV kosong atau tidak memiliki baris data yang valid.");
-          return;
-        }
-        setRows(clean);
-        setFileName(file.name);
-        setOverall("");
-        setRowAnalysis({});
-        setOpen(null);
-        try {
-          localStorage.setItem("meta_ads_custom_rows", JSON.stringify(clean));
-          localStorage.setItem("meta_ads_custom_filename", file.name);
-          localStorage.removeItem("meta_ads_custom_analysis");
-        } catch {}
-      },
-      error: (e) => setErr(`Gagal membaca CSV: ${e.message}`),
-    });
-  }
-
-  function resetToDefault() {
-    setRows(DEFAULT_ROWS);
-    setFileName("SVO-BISNISHACK---01-Ads-1-Oct-2026-4-Oct-2026.csv");
-    setOverall(DEFAULT_ANALYSIS);
-    setRowAnalysis({});
-    setOpen(null);
-    setErr("");
-    try {
-      localStorage.removeItem("meta_ads_custom_rows");
-      localStorage.removeItem("meta_ads_custom_filename");
-      localStorage.removeItem("meta_ads_custom_analysis");
-    } catch {}
-  }
+  // Data otomatis ditarik dari Meta saat halaman dibuka dan tiap tanggal atau level berubah.
+  useEffect(() => {
+    if (since && until && since <= until) fetchLive(level);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [since, until, level]);
 
   async function analyze(target: "all" | number) {
     setBusy(target);
@@ -641,9 +567,6 @@ export function MetaAds() {
       });
       if (target === "all") {
         setOverall(r.analysis);
-        try {
-          localStorage.setItem("meta_ads_custom_analysis", r.analysis);
-        } catch {}
       } else {
         setRowAnalysis((p) => ({ ...p, [target]: r.analysis }));
       }
@@ -658,7 +581,7 @@ export function MetaAds() {
     <div className="space-y-4 pb-12">
       <PageHeader
         title="Meta Ads Dashboard"
-        subtitle="Analisa Performa Iklan SVO BISNISHACK & Rekomendasi Tindakan Claude Opus"
+        subtitle="Data diambil otomatis dari akun Meta Ads lewat token, dianalisa oleh Claude Opus"
       />
 
       {/* Header bar */}
@@ -666,7 +589,7 @@ export function MetaAds() {
         <div className="flex items-center gap-2.5 px-1">
           <InfinityIcon className="size-7 text-blue-600" aria-hidden />
           <span className="text-lg font-bold">Overview</span>
-          <span className="hidden rounded-full bg-[#eef0fb] px-2.5 py-1 text-xs text-muted sm:inline">{fileName} · {rows.length} iklan</span>
+          {fileName && <span className="hidden rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted sm:inline">{fileName} · {rows.length} baris</span>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="inline-flex items-center gap-2 rounded-full bg-[#eef0fb] px-3 py-1.5 text-sm">
@@ -676,20 +599,11 @@ export function MetaAds() {
             <input type="date" value={until} min={since} max={todayStr} aria-label="Sampai tanggal" onChange={(e) => setUntil(e.target.value)} className="bg-transparent text-sm" />
           </label>
           <Button variant="secondary" onClick={() => fetchLive()} disabled={busy !== null} className="rounded-full">
-            {busy === "live" ? <Spinner label="Menarik Data..." /> : <Activity className="size-4" />} Tarik Live
+            {busy === "live" ? <Spinner label="Mengambil dari Meta..." /> : <Activity className="size-4" />} Muat Ulang
           </Button>
           <Button variant="primary" onClick={() => analyze("all")} disabled={busy !== null} className="rounded-full">
             {busy === "all" ? <Spinner label="Opus Sedang Menganalisa..." /> : <Sparkles className="size-4" />} Analisa Opus
           </Button>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-sm font-medium hover:border-accent/40">
-            <Upload className="size-4" aria-hidden /> CSV
-            <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && loadFile(e.target.files[0])} />
-          </label>
-          {fileName !== "SVO-BISNISHACK---01-Ads-1-Oct-2026-4-Oct-2026.csv" && (
-            <Button size="sm" variant="ghost" onClick={resetToDefault}>
-              <RotateCcw className="size-3.5" /> Data SVO
-            </Button>
-          )}
         </div>
       </div>
 
@@ -697,13 +611,23 @@ export function MetaAds() {
         <span className="text-sm text-muted">Level:</span>
         {LEVELS.map((l) => (
           <button key={l.id} type="button" aria-pressed={level === l.id} disabled={busy !== null}
-            onClick={() => { setLevel(l.id); if (fileName.startsWith("Live Meta API")) fetchLive(l.id); }}
+            onClick={() => setLevel(l.id)}
             className={`rounded-full border px-4 py-1.5 text-sm font-medium ${level === l.id ? "border-fg bg-fg text-bg" : "border-line bg-surface hover:border-fg/40"}`}>
             {l.label}
           </button>
         ))}
-        {!fileName.startsWith("Live Meta API") && <span className="text-xs text-muted">Pilih level lalu klik Tarik Live (CSV hanya level iklan).</span>}
       </div>
+
+      {rows.length === 0 && (
+        <Card className="p-8 text-center text-sm text-muted">
+          {busy === "live" || !loaded ? <Spinner label="Mengambil data dari Meta Ads…" /> : (
+            <>
+              <p className="font-medium text-fg">Belum ada data dari Meta Ads</p>
+              <p className="mt-1">Isi Access Token dan Ad Account ID di Pengaturan, Sistem, lalu klik Muat Ulang. Pastikan ada iklan yang berjalan di periode ini.</p>
+            </>
+          )}
+        </Card>
+      )}
 
       {err && (
         <Card className="flex items-center gap-2 border-danger/30 bg-danger-soft p-3 text-sm text-danger">
@@ -712,6 +636,8 @@ export function MetaAds() {
         </Card>
       )}
 
+      {rows.length > 0 && (
+        <>
       {/* Dua kelompok tile berwarna */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-4">
@@ -1052,7 +978,7 @@ export function MetaAds() {
                   Analisa Lengkap & Rencana Tindakan Claude Opus
                 </h3>
                 <p className="text-xs text-muted">
-                  Berdasarkan audit data aktual SVO BISNISHACK (Spend Rp 3,67jt, 7 Purchases)
+                  Berdasarkan data Meta Ads yang sedang tampil: {fileName}
                 </p>
               </div>
             </div>
@@ -1072,6 +998,8 @@ export function MetaAds() {
             <ReadableText text={overall} />
           </div>
         </Card>
+      )}
+        </>
       )}
     </div>
   );
