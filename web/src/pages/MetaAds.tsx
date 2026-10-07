@@ -199,7 +199,13 @@ function Donut({ items }: { items: { label: string; value: number; color: string
 }
 
 type Daily = { date: string; spend: number; purchases: number; impressions: number };
-type Region = { region: string; code: number | null; impressions: number; spend: number; purchases: number };
+type Region = { region: string; code: number | null; impressions: number; spend: number; purchases: number; contacts?: number };
+type Metric = "impressions" | "contacts" | "purchases";
+const METRICS: { id: Metric; label: string; unit: string }[] = [
+  { id: "impressions", label: "Impresi", unit: "impresi" },
+  { id: "contacts", label: "Kontak", unit: "kontak" },
+  { id: "purchases", label: "Purchase", unit: "purchase" },
+];
 type Level = "campaign" | "adset" | "ad";
 const LEVELS: { id: Level; label: string }[] = [
   { id: "campaign", label: "Campaign" },
@@ -233,66 +239,88 @@ function PurchaseChart({ daily, perAd }: { daily: Daily[]; perAd: { name: string
 
 function RegionHeatmap({ regions }: { regions: Region[] }) {
   const [sel, setSel] = useState("all");
+  const [metric, setMetric] = useState<Metric>("impressions");
+  const val = (r: Region) => (metric === "contacts" ? r.contacts ?? 0 : r[metric]);
+  const mUnit = METRICS.find((x) => x.id === metric)!.unit;
   const byCode = useMemo(() => {
     const m = new Map<number, Region>();
-    for (const r of regions) if (r.code != null) m.set(r.code, { ...(m.get(r.code) ?? r), ...r, impressions: (m.get(r.code)?.impressions ?? 0) + r.impressions });
+    for (const r of regions) {
+      if (r.code == null) continue;
+      const o = m.get(r.code);
+      m.set(r.code, o ? { ...o, impressions: o.impressions + r.impressions, spend: o.spend + r.spend, purchases: o.purchases + r.purchases, contacts: (o.contacts ?? 0) + (r.contacts ?? 0) } : r);
+    }
     return m;
   }, [regions]);
-  const sortedR = useMemo(() => [...regions].sort((a, b) => b.impressions - a.impressions), [regions]);
-  const max = Math.max(1, ...regions.map((r) => r.impressions));
+  const sortedR = useMemo(() => [...regions].sort((a, b) => val(b) - val(a)), [regions, metric]); // eslint-disable-line react-hooks/exhaustive-deps
+  const max = Math.max(1, ...regions.map(val));
   const fmt = (n: number) => new Intl.NumberFormat("id-ID").format(n);
-  if (regions.length === 0) {
-    return <p className="text-sm text-muted">Belum ada data wilayah. Klik <b>Tarik Live</b> (butuh Meta API) untuk memuat impresi per provinsi.</p>;
-  }
-  const shade = (imp: number) => `rgb(${Math.round(226 - 190 * (imp / max))} ${Math.round(232 - 150 * (imp / max))} ${Math.round(240 - 60 * (imp / max))})`;
+  const has = regions.length > 0;
+  const shade = (v: number) => `rgb(${Math.round(226 - 190 * (v / max))} ${Math.round(232 - 150 * (v / max))} ${Math.round(240 - 60 * (v / max))})`;
   const selR = sel === "all" ? null : regions.find((r) => r.region === sel) ?? null;
   return (
-    <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-      <div>
-        <svg viewBox="0 0 1000 370" className="w-full" role="img" aria-label="Peta panas impresi per provinsi">
-          {ID_MAP.map((f) => {
-            const r = byCode.get(f.kode);
-            const active = selR ? selR.code === f.kode : true;
-            return (
-              <path key={f.kode} d={f.d} fill={r ? shade(r.impressions) : "#f1f5f9"} stroke={selR && selR.code === f.kode ? "#0f172a" : "#fff"} strokeWidth={selR && selR.code === f.kode ? 2 : 0.8}
-                opacity={active ? 1 : 0.35} className={r ? "cursor-pointer" : ""} onClick={() => r && setSel(sel === r.region ? "all" : r.region)}>
-                <title>{f.name}: {r ? `${fmt(r.impressions)} impresi` : "tidak ada data"}</title>
-              </path>
-            );
-          })}
-        </svg>
-        <div className="mt-2 flex items-center gap-2 text-[11px] text-muted">
-          <span>Sedikit</span>
-          <span className="h-2 flex-1 rounded-full" style={{ background: `linear-gradient(90deg, ${shade(0)}, ${shade(max)})` }} />
-          <span>Banyak ({fmt(max)})</span>
-        </div>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Metrik peta">
+        <span className="text-sm text-muted">Tampilkan:</span>
+        {METRICS.map((x) => (
+          <button key={x.id} type="button" aria-pressed={metric === x.id} onClick={() => setMetric(x.id)}
+            className={`rounded-full border px-4 py-1.5 text-sm font-medium ${metric === x.id ? "border-fg bg-fg text-bg" : "border-line bg-surface hover:border-fg/40"}`}>
+            {x.label}
+          </button>
+        ))}
       </div>
-      <div>
-        <label className="mb-2 flex items-center gap-2 text-sm">
-          <span className="text-muted">Filter wilayah</span>
-          <select value={sel} onChange={(e) => setSel(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm">
-            <option value="all">Semua wilayah</option>
-            {sortedR.map((r) => <option key={r.region} value={r.region}>{r.region}</option>)}
-          </select>
-        </label>
-        {selR && (
-          <div className="mb-2 grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="rounded-xl bg-[#eef0fb] p-2"><b className="block text-sm tabular-nums">{fmt(selR.impressions)}</b>impresi</div>
-            <div className="rounded-xl bg-[#eef0fb] p-2"><b className="block text-sm tabular-nums">{fmt(selR.spend)}</b>spend</div>
-            <div className="rounded-xl bg-[#eef0fb] p-2"><b className="block text-sm tabular-nums">{selR.purchases}</b>purchase</div>
+      {!has && (
+        <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-muted">
+          Data wilayah belum ada. Peta di bawah masih kosong. Klik <b className="text-fg">Tarik Live</b> (perlu token Meta di Pengaturan, Sistem) untuk mengisinya. Data CSV tidak punya rincian wilayah.
+        </p>
+      )}
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <div>
+          <svg viewBox="0 0 1000 370" className="w-full" role="img" aria-label={`Peta panas ${mUnit} per provinsi`}>
+            {ID_MAP.map((f) => {
+              const r = byCode.get(f.kode);
+              const v = r ? val(r) : 0;
+              const picked = !!selR && selR.code === f.kode;
+              return (
+                <path key={f.kode} d={f.d} fill={r ? shade(v) : "#e2e8f0"} stroke={picked ? "#0f172a" : "#fff"} strokeWidth={picked ? 2 : 0.8}
+                  opacity={selR && !picked ? 0.35 : 1} className={r ? "cursor-pointer" : ""} onClick={() => r && setSel(sel === r.region ? "all" : r.region)}>
+                  <title>{f.name}: {r ? `${fmt(v)} ${mUnit}` : "tidak ada data"}</title>
+                </path>
+              );
+            })}
+          </svg>
+          <div className="mt-2 flex items-center gap-2 text-[11px] text-muted">
+            <span>Sedikit</span>
+            <span className="h-2 flex-1 rounded-full" style={{ background: `linear-gradient(90deg, ${shade(0)}, ${shade(max)})` }} />
+            <span>Banyak ({has ? fmt(max) : 0})</span>
           </div>
-        )}
-        <ul className="max-h-64 space-y-1.5 overflow-y-auto pr-1 text-sm">
-          {sortedR.filter((r) => sel === "all" || r.region === sel).map((r) => (
-            <li key={r.region}>
-              <button type="button" onClick={() => setSel(sel === r.region ? "all" : r.region)} className="grid w-full grid-cols-[1fr_auto] items-center gap-x-2 text-left">
-                <span className="truncate">{r.region}</span>
-                <span className="text-xs tabular-nums text-muted">{fmt(r.impressions)}</span>
-                <span className="col-span-2 h-1.5 overflow-hidden rounded-full bg-[#eef0fb]"><span className="block h-full rounded-full" style={{ width: `${(r.impressions / max) * 100}%`, background: "#1d4ed8" }} /></span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        </div>
+        <div>
+          <label className="mb-2 flex items-center gap-2 text-sm">
+            <span className="text-muted">Filter wilayah</span>
+            <select value={sel} onChange={(e) => setSel(e.target.value)} disabled={!has} className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm">
+              <option value="all">Semua wilayah</option>
+              {sortedR.map((r) => <option key={r.region} value={r.region}>{r.region}</option>)}
+            </select>
+          </label>
+          {selR && (
+            <div className="mb-2 grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="rounded-xl bg-surface-2 p-2"><b className="block text-sm tabular-nums">{fmt(selR.impressions)}</b>impresi</div>
+              <div className="rounded-xl bg-surface-2 p-2"><b className="block text-sm tabular-nums">{fmt(selR.contacts ?? 0)}</b>kontak</div>
+              <div className="rounded-xl bg-surface-2 p-2"><b className="block text-sm tabular-nums">{selR.purchases}</b>purchase</div>
+            </div>
+          )}
+          <ul className="max-h-64 space-y-1.5 overflow-y-auto pr-1 text-sm">
+            {sortedR.filter((r) => sel === "all" || r.region === sel).map((r) => (
+              <li key={r.region}>
+                <button type="button" onClick={() => setSel(sel === r.region ? "all" : r.region)} className="grid w-full grid-cols-[1fr_auto] items-center gap-x-2 text-left">
+                  <span className="truncate">{r.region}</span>
+                  <span className="text-xs tabular-nums text-muted">{fmt(val(r))}</span>
+                  <span className="col-span-2 h-1.5 overflow-hidden rounded-full bg-surface-2"><span className="block h-full rounded-full" style={{ width: `${(val(r) / max) * 100}%`, background: "#1d4ed8" }} /></span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   );
@@ -758,7 +786,7 @@ export function MetaAds() {
           <PurchaseChart daily={daily} perAd={perAd} />
         </Card>
         <Card className="p-4 lg:col-span-2">
-          <SectionTitle>Heatmap Impresi per Wilayah</SectionTitle>
+          <SectionTitle>Peta Panas per Wilayah</SectionTitle>
           <RegionHeatmap regions={regions} />
         </Card>
       </div>

@@ -149,6 +149,7 @@ export async function getRegionData(env: Env, datePreset: string, since?: string
     impressions: num(r.impressions) || 0,
     spend: num(r.spend) || 0,
     purchases: actionValue(r.actions, PURCHASE) || 0,
+    contacts: actionValue(r.actions, LEAD) || 0,
   }));
 }
 
