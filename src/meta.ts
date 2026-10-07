@@ -143,7 +143,7 @@ const REGION_CODE: Record<string, number> = {
 
 export async function getRegionData(env: Env, datePreset: string, since?: string, until?: string, campaign?: string): Promise<any[]> {
   const filt = campaign ? `&filtering=${encodeURIComponent(JSON.stringify([{ field: "campaign.name", operator: "EQUAL", value: campaign }]))}` : "";
-  const rows = await insightsAll(env, `breakdowns=region&fields=region,${LIGHT_FIELDS}&${timeQuery(datePreset, since, until)}${filt}`);
+  const rows = await insightsAll(env, `breakdowns=region&fields=${LIGHT_FIELDS}&${timeQuery(datePreset, since, until)}${filt}`);
   return rows.map((r) => ({
     region: r.region,
     code: REGION_CODE[String(r.region).toLowerCase()] ?? null,
