@@ -33,7 +33,7 @@ const MONEY = new Set([
   "Cost per contact (IDR)",
   "Cost per purchase (IDR)",
 ]);
-const PCT = new Set(["Landing page views rate per link clicks"]);
+const PCT = new Set(["Landing page views rate per link clicks", "Purchase rate", "Closing rate"]);
 
 const KEY_COLUMNS = [
   "Ad name",
@@ -42,7 +42,10 @@ const KEY_COLUMNS = [
   "Cost per purchase (IDR)",
   "Purchase ROAS (return on ad spend)",
   "Contacts",
+  "Closing rate",
   "Cost per contact (IDR)",
+  "Link clicks",
+  "Purchase rate",
   "Landing page views",
   "Adds to cart",
   "Impressions",
@@ -138,6 +141,7 @@ const BAR_COLS: Record<string, string> = {
   "Amount spent (IDR)": "#3F9B5F",
   "Purchases": "#c2410c",
   "Contacts": "#7e22ce",
+  "Link clicks": "#2563eb",
   "Landing page views": "#1d4ed8",
   "Adds to cart": "#0e7490",
   "Impressions": "#3B6FE0",
@@ -462,6 +466,7 @@ export function MetaAds() {
     const spend = rows.reduce((a, r) => a + (num(r["Amount spent (IDR)"]) || 0), 0);
     const purchases = rows.reduce((a, r) => a + (num(r["Purchases"]) || 0), 0);
     const contacts = rows.reduce((a, r) => a + (num(r["Contacts"]) || 0), 0);
+    const linkClicks = rows.reduce((a, r) => a + (num(r["Link clicks"]) || 0), 0);
     const lpv = rows.reduce((a, r) => a + (num(r["Landing page views"]) || 0), 0);
     const atc = rows.reduce((a, r) => a + (num(r["Adds to cart"]) || 0), 0);
     const impressions = rows.reduce((a, r) => a + (num(r["Impressions"]) || 0), 0);
@@ -481,6 +486,7 @@ export function MetaAds() {
     const costPerContact = contacts > 0 ? spend / contacts : 0;
     const atcRate = lpv > 0 ? (atc / lpv) * 100 : 0;
     const contactRate = atc > 0 ? (contacts / atc) * 100 : 0;
+    const purchaseRate = linkClicks > 0 ? (purchases / linkClicks) * 100 : 0;
     const closingRate = contacts > 0 ? (purchases / contacts) * 100 : 0;
 
     return {
@@ -497,6 +503,8 @@ export function MetaAds() {
       atcRate,
       contactRate,
       closingRate,
+      linkClicks,
+      purchaseRate,
     };
   }, [rows]);
 
@@ -664,7 +672,8 @@ export function MetaAds() {
             <Tile label="Purchases" value={String(summary.purchases)} sub={`CPA ${rupiah(summary.cpa)}`} icon={ShoppingBag} color="#c2410c" />
             <Tile label="ROAS Tertimbang" value={`${summary.roas.toFixed(2)}x`} sub={best ? `Terbaik ${best.name}: ${best.roas.toFixed(2)}x` : undefined} icon={TrendingUp} color="#4338ca" />
             <Tile label="Contacts" value={String(summary.contacts)} sub={`${rupiah(summary.costPerContact)} / kontak`} icon={MessageCircle} color="#0f766e" />
-            <Tile label="Closing Rate" value={`${summary.closingRate.toFixed(1)}%`} sub="kontak → beli" icon={Target} color="#be123c" />
+            <Tile label="Closing Rate" value={`${summary.closingRate.toFixed(1)}%`} sub="purchase / kontak" icon={Target} color="#be123c" />
+            <Tile label="Purchase Rate" value={`${summary.purchaseRate.toFixed(2)}%`} sub={`${new Intl.NumberFormat("id-ID").format(summary.linkClicks)} klik tautan`} icon={ShoppingBag} color="#0369a1" />
           </div>
         </Card>
       </div>

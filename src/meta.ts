@@ -46,6 +46,12 @@ const actionValue = (list: any, types: string[]): number | null => {
 };
 const PURCHASE = ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"];
 const LEAD = ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead"];
+// Kontak = event Contact (pixel/omni) atau percakapan pesan dimulai (iklan klik-ke-WhatsApp/Messenger), lalu lead sebagai cadangan.
+const CONTACT = ["contact", "omni_contact", "offsite_conversion.fb_pixel_contact", "onsite_conversion.messaging_conversation_started_7d", "onsite_conversion.total_messaging_connection", ...LEAD];
+const LINK_CLICK = ["link_click"];
+// Klik tautan: field inline_link_clicks, cadangan action link_click.
+const linkClicks = (ins: any) => num(ins.inline_link_clicks) ?? actionValue(ins.actions, LINK_CLICK) ?? 0;
+const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 10000) / 100 : 0);
 
 // Bentuk respons Graph → bentuk yang dimengerti ingestOwnAds. Diekspor agar bisa diuji tanpa jaringan.
 export function mapAd(ad: any): Record<string, unknown> {
@@ -59,7 +65,7 @@ export function mapAd(ad: any): Record<string, unknown> {
     impressions: num(ins.impressions),
     ctr: num(ins.ctr), // Meta sudah memberi dalam persen
     frequency: num(ins.frequency),
-    cpa: actionValue(ins.cost_per_action_type, PURCHASE) ?? actionValue(ins.cost_per_action_type, LEAD),
+    cpa: actionValue(ins.cost_per_action_type, PURCHASE) ?? actionValue(ins.cost_per_action_type, CONTACT),
     roas: actionValue(ins.purchase_roas, PURCHASE),
   };
 }
@@ -91,15 +97,15 @@ async function insightsAll(env: Env, qs: string): Promise<any[]> {
   return rows;
 }
 
-const INS_FIELDS = "spend,impressions,reach,actions,cost_per_action_type,purchase_roas";
-const LIGHT_FIELDS = "spend,impressions,actions"; // untuk breakdown wilayah/harian: tanpa field berat yang sering ditolak Meta
+const INS_FIELDS = "spend,impressions,reach,inline_link_clicks,actions,cost_per_action_type,purchase_roas";
+const LIGHT_FIELDS = "spend,impressions,inline_link_clicks,actions"; // untuk breakdown wilayah/harian: tanpa field berat yang sering ditolak Meta
 const LEVEL_NAME: Record<string, string> = { campaign: "campaign_name", adset: "adset_name", ad: "ad_name" };
 
 // Baris insight → bentuk kolom yang dipakai dashboard (sama dengan CSV Meta).
 function rowFromInsight(name: string, ins: any) {
   const spend = num(ins.spend) || 0;
   const purchases = actionValue(ins.actions, PURCHASE) || 0;
-  const contacts = actionValue(ins.actions, LEAD) || 0;
+  const contacts = actionValue(ins.actions, CONTACT) || 0;
   return {
     "Ad name": name || "Unknown",
     "Amount spent (IDR)": spend,
@@ -107,7 +113,10 @@ function rowFromInsight(name: string, ins: any) {
     "Cost per purchase (IDR)": actionValue(ins.cost_per_action_type, PURCHASE) || (purchases > 0 ? spend / purchases : 0),
     "Purchase ROAS (return on ad spend)": actionValue(ins.purchase_roas, PURCHASE) || 0,
     "Contacts": contacts,
-    "Cost per contact (IDR)": actionValue(ins.cost_per_action_type, LEAD) || (contacts > 0 ? spend / contacts : 0),
+    "Link clicks": linkClicks(ins),
+    "Purchase rate": pct(purchases, linkClicks(ins)),
+    "Closing rate": pct(purchases, contacts),
+    "Cost per contact (IDR)": actionValue(ins.cost_per_action_type, CONTACT) || (contacts > 0 ? spend / contacts : 0),
     "Landing page views": actionValue(ins.actions, LPV) || 0,
     "Adds to cart": actionValue(ins.actions, ATC) || 0,
     "Impressions": num(ins.impressions) || 0,
@@ -150,7 +159,7 @@ export async function getRegionData(env: Env, datePreset: string, since?: string
     impressions: num(r.impressions) || 0,
     spend: num(r.spend) || 0,
     purchases: actionValue(r.actions, PURCHASE) || 0,
-    contacts: actionValue(r.actions, LEAD) || 0,
+    contacts: actionValue(r.actions, CONTACT) || 0,
   }));
 }
 
@@ -165,7 +174,7 @@ export async function getLiveDashboardData(env: Env, datePreset: string = "maxim
     timeParam = `date_preset(${datePreset})`;
   }
 
-  const fields = "id,name,effective_status,insights." + timeParam + "{spend,impressions,reach,actions,cost_per_action_type,purchase_roas,quality_ranking,conversion_rate_ranking}";
+  const fields = "id,name,effective_status,insights." + timeParam + "{spend,impressions,reach,inline_link_clicks,actions,cost_per_action_type,purchase_roas,quality_ranking,conversion_rate_ranking}";
   let url: string | null = `${GRAPH}/${account(env)}/ads?fields=${encodeURIComponent(fields)}&limit=100`;
   const ads: any[] = [];
   
@@ -180,7 +189,7 @@ export async function getLiveDashboardData(env: Env, datePreset: string = "maxim
     const ins = ad.insights?.data?.[0] || {};
     const spend = num(ins.spend) || 0;
     const purchases = actionValue(ins.actions, PURCHASE) || 0;
-    const contacts = actionValue(ins.actions, LEAD) || 0;
+    const contacts = actionValue(ins.actions, CONTACT) || 0;
     
     return {
       "Ad name": ad.name || "Unknown Ad",
@@ -189,7 +198,10 @@ export async function getLiveDashboardData(env: Env, datePreset: string = "maxim
       "Cost per purchase (IDR)": actionValue(ins.cost_per_action_type, PURCHASE) || (purchases > 0 ? spend / purchases : 0),
       "Purchase ROAS (return on ad spend)": actionValue(ins.purchase_roas, PURCHASE) || 0,
       "Contacts": contacts,
-      "Cost per contact (IDR)": actionValue(ins.cost_per_action_type, LEAD) || (contacts > 0 ? spend / contacts : 0),
+      "Link clicks": linkClicks(ins),
+      "Purchase rate": pct(purchases, linkClicks(ins)),
+      "Closing rate": pct(purchases, contacts),
+      "Cost per contact (IDR)": actionValue(ins.cost_per_action_type, CONTACT) || (contacts > 0 ? spend / contacts : 0),
       "Landing page views": actionValue(ins.actions, LPV) || 0,
       "Adds to cart": actionValue(ins.actions, ATC) || 0,
       "Impressions": num(ins.impressions) || 0,
