@@ -473,6 +473,15 @@ type ModelMessage = { content?: string | null; tool_calls?: ToolCall[] };
 
 class QuotaError extends Error {}
 
+/** Batas tunggu Hermes per tingkat. Opus menulis konten panjang (5 konten ≈ 6–7 rb token), jadi butuh lebih lama. */
+const HERMES_TIMEOUT_MS = { fast: 120_000, smart: 120_000, opus: 300_000 } as const;
+
+/** Alasan gagal Hermes yang singkat & bisa dibaca pemilik (dipakai di log aktivitas & pesan error). */
+function hermesReason(err: unknown, tier: keyof typeof HERMES_TIMEOUT_MS): string {
+  if ((err as { name?: string })?.name === "TimeoutError") return `waktu habis ${HERMES_TIMEOUT_MS[tier] / 1000} dtk`;
+  return (err instanceof Error ? err.message : String(err)).slice(0, 160);
+}
+
 /** Claude via Hermes lokal (router 9router). Autentikasi Bearer. */
 async function callHermes(
   env: Env,
@@ -486,7 +495,7 @@ async function callHermes(
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.HERMES_API_KEY ?? ""}` },
     body: JSON.stringify({ messages, ...(tools ? { tools } : {}), max_tokens: maxTokens ?? 4096, tier }),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(HERMES_TIMEOUT_MS[tier]),
   });
   const json = (await res.json().catch(() => null)) as any;
   if (!res.ok || !json) throw new Error(`Hermes ${res.status}: ${JSON.stringify(json?.error ?? json).slice(0, 300)}`);
@@ -544,7 +553,7 @@ export async function delegateComplete(
     }
     return { text: String(json.text).trim(), model: String(json.model || env.MODEL_SMART) };
   } catch (err) {
-    await logActivity(env, opts.actor, "step", "Sub-agent Hermes gagal, pakai alur model langsung");
+    await logActivity(env, opts.actor, "step", `Sub-agent Hermes gagal (${(err as { name?: string })?.name === "TimeoutError" ? "waktu habis 240 dtk" : hermesReason(err, "smart")}), pakai alur model langsung`);
     console.error("delegateComplete: Hermes sub-agent gagal", err);
     return complete(env, {
       system: opts.brief,
@@ -558,7 +567,9 @@ export async function delegateComplete(
 
 /**
  * Satu kali tanya-jawab tanpa tool, untuk pekerjaan tim (marketing, CEO).
- * Jatuh ke Workers AI kalau Hermes gagal. `actor` = karakter Kantor 3D yang sedang bekerja.
+ * Jatuh ke Workers AI kalau Hermes gagal, KECUALI tier "opus" (penulisan konten): itu wajib Claude Opus,
+ * jadi dicoba sekali lagi lalu gagal dengan alasan jelas daripada diam-diam ditulis Gemma.
+ * `actor` = karakter Kantor 3D yang sedang bekerja.
  */
 export async function complete(
   env: Env,
@@ -576,14 +587,31 @@ export async function complete(
     { role: "system", content: opts.system },
     { role: "user", content: opts.user },
   ];
-  try {
-    const msg = await callHermes(env, messages, undefined, opts.maxTokens, opts.tier);
-    const text = cleanText(msg.content);
-    if (text) return { text, model: opts.tier === "opus" ? env.MODEL_OPUS : opts.tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST };
-  } catch (err) {
-    console.error("complete: Hermes gagal → Workers AI", err);
-    await logActivity(env, opts.actor, "step", "Hermes lokal tidak merespons, pakai otak cadangan");
+  const opusOnly = opts.tier === "opus";
+  let reason = "";
+  for (let attempt = 0; attempt < (opusOnly ? 2 : 1); attempt++) {
+    try {
+      const msg = await callHermes(env, messages, undefined, opts.maxTokens, opts.tier);
+      const text = cleanText(msg.content);
+      if (text) return { text, model: opusOnly ? env.MODEL_OPUS : opts.tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST };
+      reason = "jawaban kosong";
+    } catch (err) {
+      console.error(`complete: Hermes gagal (tier ${opts.tier})`, err);
+      reason = hermesReason(err, opts.tier);
+      // Waktu habis tidak dicoba ulang: menunggu 5 menit lagi kemungkinan besar sama saja.
+      if ((err as { name?: string })?.name === "TimeoutError") break;
+    }
+    if (opusOnly && attempt === 0) {
+      await logActivity(env, opts.actor, "step", `Claude Opus belum menjawab (${reason}), mencoba lagi`);
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
   }
+  if (opusOnly) {
+    throw new Error(
+      `Claude Opus tidak bisa dipakai (${reason}). Pastikan laptop, hermes-api-server, dan 9router menyala, lalu coba lagi.`,
+    );
+  }
+  await logActivity(env, opts.actor, "step", `Hermes lokal tidak merespons (${reason}), pakai otak cadangan`);
   const msg = await callWorkersAI(env, messages, undefined, { maxTokens: opts.maxTokens, noThinking: opts.noThinking });
   return { text: cleanText(msg.content) || "(tidak ada hasil)", model: env.FALLBACK_MODEL };
 }

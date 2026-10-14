@@ -30,7 +30,7 @@ Buka `https://asisten-ai.<subdomain>.workers.dev` → klik **Kirim kode ke Teleg
 
 - **CEO**: review mingguan tiap Minggu 20:00 WIB (atau `/review` / tombol di Kantor 3D). Membaca data tugas, memori, hasil marketing, dan laporan operasional, memberi arahan ke kedua manajer, lalu menetapkan **fokus minggu ini** yang ikut dibaca semua agen (`src/ceo.ts`).
 - **Manajer Operasional** membawahi Haiku, Opus, Whisper, Gemma, Pengingat, Briefing, dan Claude. Memeriksa kesehatan tim tanpa AI (kendala, jatah Puter, beban kerja), dimasukkan ke briefing, dan di Kantor 3D menghampiri agen yang bermasalah (`src/ops.ts`).
-- **Manajer Marketing** menerima permintaan marketing dari Haiku (tool `delegate_marketing`) dan menugaskan **Copywriter**, **Perencana Konten**, **Analis Iklan**, atau **Riset**. Hasilnya dikirim utuh ke pemilik dan disimpan sebagai catatan bertag `marketing` (`src/marketing.ts`).
+- **Manajer Marketing** menerima permintaan marketing dari Haiku (tool `delegate_marketing`) dan menugaskan **Copywriter**, **Perencana Konten**, **Analis Iklan**, atau **Riset**. Hasilnya dikirim utuh ke pemilik dan disimpan sebagai catatan bertag `marketing` (`src/marketing.ts`). Penulisan konten (Copywriter, Perencana Konten, "Bikin 5 konten mirip", Studio Konten) **selalu Claude Opus** lewat Hermes lokal: kalau Opus tidak bisa dihubungi, tugas gagal dengan alasannya (bisa dicoba lagi), tidak diam-diam ditulis Gemma.
 
 ### Riset Kompetitor (Meta Ad Library)
 

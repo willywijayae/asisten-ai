@@ -88,7 +88,8 @@ async function callRouter({ messages, tools, max_tokens = 4096, tier = "fast" })
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${ROUTER_KEY}` },
     body: JSON.stringify({ model, messages, ...(tools?.length ? { tools } : {}), max_tokens, stream: false }),
-    signal: AbortSignal.timeout(110_000),
+    // Opus menulis konten panjang; Worker menunggu sampai 300 dtk untuk tier ini.
+    signal: AbortSignal.timeout(tier === "opus" ? 290_000 : 110_000),
   });
   const text = await r.text();
   let data; try { data = JSON.parse(text); } catch { throw new Error(`router ${r.status}: bukan JSON: ${text.slice(0, 200)}`); }

@@ -972,7 +972,7 @@ export async function runRemix(env: Env, remixId: number): Promise<void> {
   let model = "";
   try {
     for (let attempt = 0; attempt < 2 && !data?.ideas?.length; attempt++) {
-      // Tulis konten selalu dengan model ahli (Opus); cadangan Gemma hanya kalau Puter tidak tersedia.
+      // Tulis konten selalu dengan Claude Opus; kalau Opus tidak bisa dipakai, complete() melempar error → gagal dengan alasan.
       const res = await complete(env, {
         system: REMIX_PROMPT(specialist) + owner,
         user: `IKLAN ACUAN (kompetitor):\n${reference}${context ? `\n\n${context}` : ""}`,
