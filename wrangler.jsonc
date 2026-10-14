@@ -55,6 +55,7 @@
   "vars": {
     "MODEL_FAST": "smart-easy-claude",   // router lokal Hermes: tugas rutin
     "MODEL_SMART": "smart-hard-claude",  // router lokal Hermes: permintaan rumit
+    "MODEL_OPUS": "content-opus",         // Claude Opus murni: perencanaan/pembuatan konten
     "FALLBACK_MODEL": "@cf/google/gemma-4-26b-a4b-it", // cadangan gratis (Workers AI, paket Free)
     "TIMEZONE_OFFSET": "+07:00",
     "PUBLIC_URL": "https://asisten-ai.willywijaya46.workers.dev",

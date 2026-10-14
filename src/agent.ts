@@ -479,7 +479,7 @@ async function callHermes(
   messages: ChatMessage[],
   tools: Tool[] | undefined,
   maxTokens: number | undefined,
-  tier: "fast" | "smart",
+  tier: "fast" | "smart" | "opus",
 ): Promise<ModelMessage> {
   if (!env.HERMES_API_ENDPOINT) throw new Error("HERMES_API_ENDPOINT belum di-set");
   const res = await fetch(env.HERMES_API_ENDPOINT, {
@@ -515,16 +515,57 @@ async function callWorkersAI(
   return msg;
 }
 
+/** Jalankan spesialis marketing sebagai sub-agent Hermes terisolasi lewat orchestrator lokal. */
+export async function delegateComplete(
+  env: Env,
+  opts: { specialist: string; specialistName: string; brief: string; request: string; context: string; actor: AgentId; model?: string },
+): Promise<{ text: string; model: string }> {
+  try {
+    if (!env.HERMES_API_ENDPOINT) throw new Error("HERMES_API_ENDPOINT belum di-set");
+    const endpointUrl = new URL(env.HERMES_API_ENDPOINT);
+    endpointUrl.pathname = endpointUrl.pathname.replace(/\/api\/agent\/?$/, "/api/delegate");
+    if (!endpointUrl.pathname.endsWith("/api/delegate")) throw new Error("HERMES_API_ENDPOINT harus berakhir /api/agent");
+    const res = await fetch(endpointUrl.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.HERMES_API_KEY ?? ""}` },
+      body: JSON.stringify({
+        specialist: opts.specialist,
+        specialist_name: opts.specialistName,
+        brief: opts.brief,
+        request: opts.request,
+        context: opts.context,
+        ...(opts.model ? { model: opts.model } : {}),
+      }),
+      signal: AbortSignal.timeout(240_000),
+    });
+    const json = (await res.json().catch(() => null)) as any;
+    if (!res.ok || !json?.delegated || !String(json.text ?? "").trim()) {
+      throw new Error(`Hermes delegation ${res.status}: ${JSON.stringify(json?.error ?? json).slice(0, 300)}`);
+    }
+    return { text: String(json.text).trim(), model: String(json.model || env.MODEL_SMART) };
+  } catch (err) {
+    await logActivity(env, opts.actor, "step", "Sub-agent Hermes gagal, pakai alur model langsung");
+    console.error("delegateComplete: Hermes sub-agent gagal", err);
+    return complete(env, {
+      system: opts.brief,
+      user: opts.context,
+      tier: opts.model === env.MODEL_OPUS ? "opus" : "smart",
+      actor: opts.actor,
+      maxTokens: 6000,
+    });
+  }
+}
+
 /**
- * Satu kali tanya-jawab tanpa tool, untuk pekerjaan tim (marketing, CEO). Claude lewat Puter dulu,
- * jatuh ke Workers AI kalau Puter gagal/habis. `actor` = karakter Kantor 3D yang sedang bekerja.
+ * Satu kali tanya-jawab tanpa tool, untuk pekerjaan tim (marketing, CEO).
+ * Jatuh ke Workers AI kalau Hermes gagal. `actor` = karakter Kantor 3D yang sedang bekerja.
  */
 export async function complete(
   env: Env,
   opts: {
     system: string;
     user: string;
-    tier: "fast" | "smart";
+    tier: "fast" | "smart" | "opus";
     actor: AgentId;
     maxTokens?: number;
     /** Cadangan Workers AI tanpa mode berpikir (lebih cepat; aman untuk keluaran JSON panjang). */
@@ -538,7 +579,7 @@ export async function complete(
   try {
     const msg = await callHermes(env, messages, undefined, opts.maxTokens, opts.tier);
     const text = cleanText(msg.content);
-    if (text) return { text, model: opts.tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST };
+    if (text) return { text, model: opts.tier === "opus" ? env.MODEL_OPUS : opts.tier === "smart" ? env.MODEL_SMART : env.MODEL_FAST };
   } catch (err) {
     console.error("complete: Hermes gagal → Workers AI", err);
     await logActivity(env, opts.actor, "step", "Hermes lokal tidak merespons, pakai otak cadangan");

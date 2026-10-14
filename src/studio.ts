@@ -399,7 +399,7 @@ export async function runStage(env: Env, id: number, stage: Stage, options: Reco
       const res = await complete(env, {
         system,
         user: attempt && errors.length ? `${user}\n\nPERBAIKI kesalahan ini dari jawaban sebelumnya:\n- ${errors.join("\n- ")}` : user,
-        tier: "smart",
+        tier: "opus",
         actor,
         maxTokens: 6000,
         noThinking: true,

@@ -3,7 +3,7 @@ import * as db from "./db";
 import * as profile from "./profile";
 import * as memory from "./memory";
 import { clip, logActivity } from "./activity";
-import { complete } from "./agent";
+import { delegateComplete } from "./agent";
 
 // Divisi marketing: Manajer Marketing menerima permintaan dari Haiku (resepsionis), menugaskan
 // satu spesialis, lalu hasilnya disimpan sebagai catatan bertag "marketing" di Second Brain.
@@ -51,8 +51,9 @@ export const CONTENT_WRITERS: SpecialistId[] = ["copywriter", "konten"];
 
 /** Nama pendek model untuk ditampilkan ke pemilik. */
 export function modelLabel(env: Env, model: string): string {
-  if (model === env.MODEL_SMART) return "Opus";
-  if (model === env.MODEL_FAST) return "Haiku";
+  if (model === env.MODEL_OPUS) return "Claude Opus";
+  if (model === env.MODEL_SMART) return "Model ahli";
+  if (model === env.MODEL_FAST) return "Model cepat";
   return "Gemma (cadangan)";
 }
 export const SPECIALIST_IDS = Object.keys(SPECIALISTS) as SpecialistId[];
@@ -87,12 +88,14 @@ export async function runMarketing(
 
   let result: { text: string; model: string };
   try {
-    result = await complete(env, {
-      system: sp.brief + TEAM_RULES + owner,
-      user: `Tugas dari Manajer Marketing (permintaan pemilik):\n${request}${context ? `\n\n${context}` : ""}${history}`,
-      tier: CONTENT_WRITERS.includes(id) ? "smart" : "fast",
+    result = await delegateComplete(env, {
+      specialist: id,
+      specialistName: sp.name,
+      brief: sp.brief + TEAM_RULES + owner,
+      request,
+      context: `Tugas dari Manajer Marketing (permintaan pemilik):\n${request}${context ? `\n\n${context}` : ""}${history}`,
       actor: id,
-      maxTokens: CONTENT_WRITERS.includes(id) ? 6000 : undefined,
+      ...(CONTENT_WRITERS.includes(id) ? { model: env.MODEL_OPUS } : {}),
     });
   } catch (err) {
     await logActivity(env, id, "error", `Gagal mengerjakan: ${String(err)}`);

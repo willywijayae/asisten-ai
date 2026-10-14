@@ -21,6 +21,8 @@ export interface Env {
   /** Nama model di router lokal: tingkat cepat & ahli (juga label di dashboard). */
   MODEL_FAST: string;
   MODEL_SMART: string;
+  /** Model khusus Claude Opus untuk perencanaan dan pembuatan konten. */
+  MODEL_OPUS: string;
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
   OWNER_CHAT_ID: string;

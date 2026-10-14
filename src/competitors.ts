@@ -976,7 +976,7 @@ export async function runRemix(env: Env, remixId: number): Promise<void> {
       const res = await complete(env, {
         system: REMIX_PROMPT(specialist) + owner,
         user: `IKLAN ACUAN (kompetitor):\n${reference}${context ? `\n\n${context}` : ""}`,
-        tier: "smart",
+        tier: "opus",
         actor: specialist,
         maxTokens: 7000,
         noThinking: true,
